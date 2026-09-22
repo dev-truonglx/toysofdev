@@ -44,7 +44,7 @@ docker run --rm \
     rsync -a --exclude target --exclude node_modules --exclude .git --exclude dist --exclude dist-win /src/ /app/
     cd /app
     npm ci
-    npm run tauri build -- --runner cargo-xwin --target x86_64-pc-windows-msvc --bundles nsis
+    npm run tauri build -- --runner cargo-xwin --target x86_64-pc-windows-msvc --bundles nsis --ignore-version-mismatches
     cp src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe /out/
     cp src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe.sig /out/ 2>/dev/null || true
   '

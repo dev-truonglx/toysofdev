@@ -61,7 +61,7 @@ VERSION="$VERSION" node -e '
 echo "==> [2/6] Building macOS universal bundle (Intel + Apple Silicon)"
 rustup target add aarch64-apple-darwin x86_64-apple-darwin >/dev/null 2>&1 || true
 npm ci
-npm run tauri build -- --target universal-apple-darwin
+npm run tauri build -- --target universal-apple-darwin --ignore-version-mismatches
 
 # ── 3) Windows installer (Docker cross-build) ─────────────────────────────────
 echo "==> [3/6] Building Windows installer in Docker"
