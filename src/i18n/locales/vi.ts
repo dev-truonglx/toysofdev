@@ -24,6 +24,12 @@ export const vi: TranslationSchema = {
     toastUpdateAvailable: "Bản cập nhật mới hơn đã có sẵn trên GitHub (Hiện tại: v{version}).",
     toastViewRelease: "Xem bản phát hành",
     toastDismiss: "Bỏ qua",
+    updateAvailableTitle: "Đã có bản cập nhật mới: v{version}",
+    updateNow: "Cập nhật ngay",
+    updateDownloading: "Đang tải... {percent}%",
+    updateDownloadedTitle: "Đã cập nhật xong!",
+    updateRestartNow: "Khởi động lại",
+    updateDismiss: "Bỏ qua",
   },
   theme: {
     system: "Giao diện hệ thống",

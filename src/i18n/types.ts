@@ -34,6 +34,12 @@ export interface TranslationSchema {
     toastUpdateAvailable: string;
     toastViewRelease: string;
     toastDismiss: string;
+    updateAvailableTitle: string;
+    updateNow: string;
+    updateDownloading: string;
+    updateDownloadedTitle: string;
+    updateRestartNow: string;
+    updateDismiss: string;
   };
   theme: {
     system: string;

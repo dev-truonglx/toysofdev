@@ -6,6 +6,8 @@
   "permissions": [
     "core:default",
     "store:default",
+    "updater:default",
+    "process:default",
     {
       "identifier": "http:default",
       "allow": [

@@ -11,6 +11,12 @@ import {
   ChevronRight,
   ShieldCheck,
   Languages,
+  Sparkles,
+  Download,
+  RotateCw,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
 import { useAppStore } from "../../store/useAppStore";
 import {
@@ -21,6 +27,7 @@ import {
   TOOLS,
 } from "../../tools";
 import { useTranslation } from "../../i18n";
+import { CURRENT_VERSION, useUpdateStore } from "../../services/updateService";
 
 export const Sidebar: React.FC = () => {
   const {
@@ -34,6 +41,15 @@ export const Sidebar: React.FC = () => {
   } = useAppStore();
 
   const { t, language, setLanguage } = useTranslation();
+  const {
+    status: updateStatus,
+    newVersion,
+    downloadProgress,
+    dismissed: updateDismissed,
+    downloadAndInstall,
+    restartApp,
+    dismiss: dismissUpdate,
+  } = useUpdateStore();
 
   const searchInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -73,13 +89,93 @@ export const Sidebar: React.FC = () => {
             <div className="font-bold text-sm tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
               <span>{t.common.appName}</span>
               <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400">
-                v0.1
+                v{CURRENT_VERSION}
               </span>
             </div>
             <div className="text-[11px] text-slate-500 dark:text-slate-400">{t.common.appSubtitle}</div>
           </div>
         </div>
       </div>
+
+      {/* In-App Auto-Update Widget (Directly under Logo/App Name) */}
+      {!updateDismissed &&
+        (updateStatus === "available" ||
+          updateStatus === "downloading" ||
+          updateStatus === "downloaded" ||
+          updateStatus === "error") && (
+          <div className="mx-3 mt-3 p-3 rounded-xl bg-gradient-to-br from-indigo-500/10 via-violet-500/10 to-indigo-500/5 dark:from-indigo-950/70 dark:via-violet-950/60 dark:to-slate-900 border border-indigo-500/20 dark:border-indigo-500/30 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200 space-y-2">
+            {/* Header row */}
+            <div className="flex items-start justify-between gap-1.5">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-slate-100 min-w-0">
+                {updateStatus === "downloaded" ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                ) : updateStatus === "downloading" ? (
+                  <Loader2 className="w-4 h-4 text-indigo-500 animate-spin shrink-0" />
+                ) : updateStatus === "error" ? (
+                  <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                ) : (
+                  <Sparkles className="w-4 h-4 text-indigo-500 shrink-0" />
+                )}
+                <span className="truncate">
+                  {updateStatus === "downloaded"
+                    ? t.common.updateDownloadedTitle
+                    : updateStatus === "downloading"
+                    ? t.common.updateDownloading.replace("{percent}", String(downloadProgress))
+                    : updateStatus === "error"
+                    ? "Update failed"
+                    : t.common.updateAvailableTitle.replace("{version}", newVersion || "")}
+                </span>
+              </div>
+              <button
+                onClick={dismissUpdate}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 rounded transition-colors shrink-0"
+                title={t.common.updateDismiss}
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Progress bar during download */}
+            {updateStatus === "downloading" && (
+              <div className="w-full bg-slate-200/80 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                <div
+                  className="bg-indigo-600 dark:bg-indigo-500 h-full rounded-full transition-all duration-300 ease-out"
+                  style={{ width: `${downloadProgress}%` }}
+                />
+              </div>
+            )}
+
+            {/* Action button */}
+            {updateStatus === "available" && (
+              <button
+                onClick={downloadAndInstall}
+                className="w-full py-1.5 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white text-xs font-semibold shadow-sm shadow-indigo-600/30 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>{t.common.updateNow}</span>
+              </button>
+            )}
+
+            {updateStatus === "downloaded" && (
+              <button
+                onClick={restartApp}
+                className="w-full py-1.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white text-xs font-bold shadow-sm shadow-emerald-600/30 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+              >
+                <RotateCw className="w-3.5 h-3.5" />
+                <span>{t.common.updateRestartNow}</span>
+              </button>
+            )}
+
+            {updateStatus === "error" && (
+              <button
+                onClick={downloadAndInstall}
+                className="w-full py-1 px-2 rounded-lg bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-xs text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
+              >
+                Retry
+              </button>
+            )}
+          </div>
+        )}
 
       {/* Search Input */}
       <div className="p-3">

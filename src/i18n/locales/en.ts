@@ -24,6 +24,12 @@ export const en: TranslationSchema = {
     toastUpdateAvailable: "A newer release is available on GitHub (Current: v{version}).",
     toastViewRelease: "View Release",
     toastDismiss: "Dismiss",
+    updateAvailableTitle: "New update available: v{version}",
+    updateNow: "Update Now",
+    updateDownloading: "Downloading... {percent}%",
+    updateDownloadedTitle: "Update downloaded!",
+    updateRestartNow: "Restart Now",
+    updateDismiss: "Dismiss",
   },
   theme: {
     system: "System Theme",

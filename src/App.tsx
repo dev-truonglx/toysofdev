@@ -1,28 +1,23 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useAppStore, applyTheme } from "./store/useAppStore";
 import { Sidebar } from "./components/layout/Sidebar";
 import { AllToolsView } from "./components/layout/AllToolsView";
-import { UpdateToast } from "./components/layout/UpdateToast";
 import { getToolById } from "./tools";
-import { checkForUpdates, UpdateInfo } from "./services/updateService";
+import { useUpdateStore } from "./services/updateService";
 
 export default function App() {
   const { selectedToolId, themeMode, initStore } = useAppStore();
-  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const checkForUpdates = useUpdateStore((state) => state.checkForUpdates);
 
   // Initialize store (load bookmarks from config.json)
   useEffect(() => {
     initStore();
   }, [initStore]);
 
-  // Check for updates via GitHub release API on startup
+  // Check for updates on startup
   useEffect(() => {
-    checkForUpdates().then((info) => {
-      if (info && info.hasUpdate) {
-        setUpdateInfo(info);
-      }
-    });
-  }, []);
+    checkForUpdates();
+  }, [checkForUpdates]);
 
   // System theme synchronization
   useEffect(() => {
@@ -49,9 +44,6 @@ export default function App() {
       <main className="flex-1 h-full flex flex-col overflow-hidden bg-white dark:bg-slate-900">
         {ToolComponent ? <ToolComponent /> : <AllToolsView />}
       </main>
-
-      {/* Auto-Update Banner */}
-      <UpdateToast updateInfo={updateInfo} onDismiss={() => setUpdateInfo(null)} />
     </div>
   );
 }
