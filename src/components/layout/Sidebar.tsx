@@ -19,6 +19,7 @@ import {
   AlertCircle,
   PanelLeftClose,
   PanelLeftOpen,
+  Check,
 } from "lucide-react";
 import { useAppStore } from "../../store/useAppStore";
 import {
@@ -54,6 +55,8 @@ export const Sidebar: React.FC = () => {
     downloadAndInstall,
     restartApp,
     dismiss: dismissUpdate,
+    checkForUpdates,
+    errorMessage,
   } = useUpdateStore();
 
   const searchInputRef = React.useRef<HTMLInputElement>(null);
@@ -136,6 +139,37 @@ export const Sidebar: React.FC = () => {
             <Wrench className="w-5 h-5" />
           </button>
           <button
+            onClick={() => checkForUpdates(true)}
+            title={
+              updateStatus === "checking"
+                ? t.common.checkingUpdate
+                : updateStatus === "up-to-date"
+                ? `${t.common.upToDate} (v${CURRENT_VERSION})`
+                : updateStatus === "error"
+                ? (errorMessage || t.common.checkUpdateError)
+                : `${t.common.checkUpdateTooltip} (v${CURRENT_VERSION})`
+            }
+            className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
+              updateStatus === "up-to-date"
+                ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-300/60 dark:border-emerald-700/60"
+                : updateStatus === "error"
+                ? "bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border border-rose-300/60 dark:border-rose-700/60"
+                : updateStatus === "checking"
+                ? "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-300/60 dark:border-indigo-700/60"
+                : "bg-slate-200/70 dark:bg-slate-800/80 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 border border-slate-300/40 dark:border-slate-700/50"
+            }`}
+          >
+            {updateStatus === "checking" ? (
+              <RotateCw className="w-3.5 h-3.5 animate-spin text-indigo-500" />
+            ) : updateStatus === "up-to-date" ? (
+              <Check className="w-3.5 h-3.5 text-emerald-500" />
+            ) : updateStatus === "error" ? (
+              <AlertCircle className="w-3.5 h-3.5 text-rose-500" />
+            ) : (
+              <RotateCw className="w-3.5 h-3.5" />
+            )}
+          </button>
+          <button
             onClick={() => toggleSidebar()}
             title={`${t.common.expandSidebar} (⌘B / Ctrl+B)`}
             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800/60 transition-colors cursor-pointer"
@@ -155,9 +189,81 @@ export const Sidebar: React.FC = () => {
             <div className="min-w-0">
               <div className="font-bold text-sm tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-1.5 truncate">
                 <span className="truncate">{t.common.appName}</span>
-                <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 shrink-0">
-                  v{CURRENT_VERSION}
-                </span>
+
+                {/* Interactive Version Badge / Check Update Button */}
+                {updateStatus === "checking" ? (
+                  <span
+                    title={t.common.checkingUpdate}
+                    className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/80 border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 shrink-0"
+                  >
+                    <RotateCw className="w-2.5 h-2.5 animate-spin" />
+                    <span>{t.common.checkingUpdate}</span>
+                  </span>
+                ) : updateStatus === "up-to-date" ? (
+                  <span
+                    title={`${t.common.upToDate} (v${CURRENT_VERSION})`}
+                    className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-300/80 dark:border-emerald-700/80 text-emerald-600 dark:text-emerald-400 shrink-0 animate-in fade-in zoom-in-95 duration-200"
+                  >
+                    <Check className="w-2.5 h-2.5" />
+                    <span>{t.common.upToDate}</span>
+                  </span>
+                ) : updateStatus === "error" ? (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      checkForUpdates(true);
+                    }}
+                    title={errorMessage || t.common.checkUpdateError}
+                    className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/80 border border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/60 transition-colors shrink-0 cursor-pointer"
+                  >
+                    <AlertCircle className="w-2.5 h-2.5" />
+                    <span>{t.common.checkUpdateError}</span>
+                  </button>
+                ) : updateStatus === "available" ? (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      downloadAndInstall();
+                    }}
+                    title={t.common.updateAvailableTitle.replace("{version}", newVersion || "")}
+                    className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-600 text-white shadow-sm shadow-indigo-600/30 hover:bg-indigo-700 transition-all shrink-0 cursor-pointer animate-pulse"
+                  >
+                    <Sparkles className="w-2.5 h-2.5" />
+                    <span>v{newVersion}</span>
+                  </button>
+                ) : updateStatus === "downloading" ? (
+                  <span
+                    title={t.common.updateDownloading.replace("{percent}", String(downloadProgress))}
+                    className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/80 border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 shrink-0"
+                  >
+                    <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                    <span>{downloadProgress}%</span>
+                  </span>
+                ) : updateStatus === "downloaded" ? (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      restartApp();
+                    }}
+                    title={t.common.updateRestartNow}
+                    className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-600 text-white shadow-sm shadow-emerald-600/30 hover:bg-emerald-700 transition-all shrink-0 cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-2.5 h-2.5" />
+                    <span>{t.common.updateRestartNow}</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      checkForUpdates(true);
+                    }}
+                    title={`${t.common.checkUpdateTooltip} (v${CURRENT_VERSION})`}
+                    className="group/badge inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/80 border border-indigo-200/60 dark:border-indigo-800/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100/80 dark:hover:bg-indigo-900/60 hover:border-indigo-300/80 dark:hover:border-indigo-700/80 active:scale-95 transition-all shrink-0 cursor-pointer"
+                  >
+                    <span>v{CURRENT_VERSION}</span>
+                    <RotateCw className="w-2.5 h-2.5 opacity-50 group-hover/badge:opacity-100 group-hover/badge:rotate-180 transition-all duration-300" />
+                  </button>
+                )}
               </div>
               <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
                 {t.common.appSubtitle}

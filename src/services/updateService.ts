@@ -11,6 +11,7 @@ export const CURRENT_VERSION: string =
 export type UpdateStatus =
   | "idle"
   | "checking"
+  | "up-to-date"
   | "available"
   | "downloading"
   | "downloaded"
@@ -26,11 +27,20 @@ interface UpdateStoreState {
   errorMessage: string | null;
   dismissed: boolean;
 
-  checkForUpdates: () => Promise<boolean>;
+  checkForUpdates: (manual?: boolean) => Promise<boolean>;
   downloadAndInstall: () => Promise<void>;
   restartApp: () => Promise<void>;
   dismiss: () => void;
   reset: () => void;
+}
+
+let resetTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearAutoReset() {
+  if (resetTimer) {
+    clearTimeout(resetTimer);
+    resetTimer = null;
+  }
 }
 
 function isTauriEnvironment(): boolean {
@@ -47,9 +57,21 @@ export const useUpdateStore = create<UpdateStoreState>((set, get) => ({
   errorMessage: null,
   dismissed: false,
 
-  checkForUpdates: async () => {
+  checkForUpdates: async (manual = false) => {
+    clearAutoReset();
+
     if (!isTauriEnvironment()) {
       console.debug("Not in Tauri environment, skipping auto-updater");
+      if (manual) {
+        set({ status: "checking", errorMessage: null });
+        await new Promise((r) => setTimeout(r, 600));
+        set({ status: "up-to-date", errorMessage: null });
+        resetTimer = setTimeout(() => {
+          if (get().status === "up-to-date") {
+            set({ status: "idle" });
+          }
+        }, 3500);
+      }
       return false;
     }
 
@@ -67,12 +89,30 @@ export const useUpdateStore = create<UpdateStoreState>((set, get) => ({
         });
         return true;
       } else {
-        set({ status: "idle", update: null, newVersion: null });
+        if (manual) {
+          set({ status: "up-to-date", update: null, newVersion: null, errorMessage: null });
+          resetTimer = setTimeout(() => {
+            if (get().status === "up-to-date") {
+              set({ status: "idle" });
+            }
+          }, 3500);
+        } else {
+          set({ status: "idle", update: null, newVersion: null });
+        }
         return false;
       }
     } catch (err: any) {
-      console.debug("Update check completed (no update or offline):", err);
-      set({ status: "idle" });
+      console.error("Update check failed:", err);
+      if (manual) {
+        set({ status: "error", errorMessage: err?.message || String(err) });
+        resetTimer = setTimeout(() => {
+          if (get().status === "error") {
+            set({ status: "idle" });
+          }
+        }, 4000);
+      } else {
+        set({ status: "idle" });
+      }
       return false;
     }
   },

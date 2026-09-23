@@ -65,24 +65,26 @@ npm run tauri build -- --target universal-apple-darwin --ignore-version-mismatch
 
 # ── 3) Windows installer (Docker cross-build) ─────────────────────────────────
 echo "==> [3/6] Building Windows installer in Docker"
+rm -rf dist-win && mkdir -p dist-win
 bash scripts/build-win-docker.sh
 
 # ── 4) Collect release artifacts into release_dist/ ───────────────────────────
 echo "==> [4/6] Collecting artifacts"
 rm -rf release_dist && mkdir -p release_dist
 
-DMG_SRC="$(find src-tauri/target/universal-apple-darwin/release/bundle/dmg -name "*.dmg" | head -n 1)"
+DMG_SRC="$(find src-tauri/target/universal-apple-darwin/release/bundle/dmg -name "*${VERSION}*.dmg" | head -n 1)"
+[ -z "$DMG_SRC" ] && DMG_SRC="$(find src-tauri/target/universal-apple-darwin/release/bundle/dmg -name "*.dmg" | head -n 1)"
 MAC_TGZ_SRC="$(find src-tauri/target/universal-apple-darwin/release/bundle/macos -name "*.app.tar.gz" | head -n 1)"
 MAC_SIG_SRC="$(find src-tauri/target/universal-apple-darwin/release/bundle/macos -name "*.app.tar.gz.sig" | head -n 1)"
 
-EXE_SRC="$(find dist-win -name "*-setup.exe" | head -n 1)"
-EXE_SIG_SRC="$(find dist-win -name "*-setup.exe.sig" | head -n 1)"
+EXE_SRC="$(find dist-win -name "*${VERSION}*-setup.exe" | head -n 1)"
+EXE_SIG_SRC="$(find dist-win -name "*${VERSION}*-setup.exe.sig" | head -n 1)"
 
 [ -n "$DMG_SRC" ] && [ -f "$DMG_SRC" ] || { echo "ERROR: macOS DMG not found."; exit 1; }
 [ -n "$MAC_TGZ_SRC" ] && [ -f "$MAC_TGZ_SRC" ] || { echo "ERROR: macOS updater tar.gz not found."; exit 1; }
 [ -n "$MAC_SIG_SRC" ] && [ -f "$MAC_SIG_SRC" ] || { echo "ERROR: macOS updater tar.gz.sig not found."; exit 1; }
-[ -n "$EXE_SRC" ] && [ -f "$EXE_SRC" ] || { echo "ERROR: Windows EXE installer not found."; exit 1; }
-[ -n "$EXE_SIG_SRC" ] && [ -f "$EXE_SIG_SRC" ] || { echo "ERROR: Windows installer .sig not found."; exit 1; }
+[ -n "$EXE_SRC" ] && [ -f "$EXE_SRC" ] || { echo "ERROR: Windows EXE installer for version ${VERSION} not found in dist-win/."; exit 1; }
+[ -n "$EXE_SIG_SRC" ] && [ -f "$EXE_SIG_SRC" ] || { echo "ERROR: Windows installer .sig for version ${VERSION} not found in dist-win/."; exit 1; }
 
 cp "$DMG_SRC" "release_dist/Toys.of.Dev_${VERSION}_universal.dmg"
 cp "$MAC_TGZ_SRC" "release_dist/Toys.of.Dev.app.tar.gz"

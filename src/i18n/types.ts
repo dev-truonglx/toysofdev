@@ -40,6 +40,10 @@ export interface TranslationSchema {
     updateDownloadedTitle: string;
     updateRestartNow: string;
     updateDismiss: string;
+    checkUpdateTooltip: string;
+    checkingUpdate: string;
+    upToDate: string;
+    checkUpdateError: string;
     collapseSidebar: string;
     expandSidebar: string;
   };
