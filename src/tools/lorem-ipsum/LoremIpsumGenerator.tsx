@@ -3,7 +3,7 @@ import { AlignLeft, RefreshCw } from "lucide-react";
 import { ToolLayout } from "../../components/common/ToolLayout";
 import { useTranslation } from "../../i18n";
 
-type LoremType = "paragraphs" | "sentences" | "words";
+type LoremType = "paragraphs" | "sentences" | "words" | "characters";
 
 export const LoremIpsumGenerator: React.FC = () => {
   const { t } = useTranslation();
@@ -57,6 +57,15 @@ export const LoremIpsumGenerator: React.FC = () => {
         sentences[0] = "Lorem ipsum dolor sit amet, consectetur adipiscing elit.";
       }
       result = sentences.join(" ");
+    } else if (type === "characters") {
+      let raw = "";
+      if (startWithLorem) {
+        raw = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. ";
+      }
+      while (raw.length < count) {
+        raw += generateSentence() + " ";
+      }
+      result = raw.slice(0, count);
     } else {
       const paragraphs: string[] = [];
       for (let p = 0; p < count; p++) {
@@ -90,12 +99,18 @@ export const LoremIpsumGenerator: React.FC = () => {
         <select
           id="lorem-type"
           value={type}
-          onChange={(e) => setType(e.target.value as LoremType)}
-          className="text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          onChange={(e) => {
+            const newType = e.target.value as LoremType;
+            setType(newType);
+            const maxVal = newType === "characters" ? 1000000 : 200;
+            if (count > maxVal) setCount(maxVal);
+          }}
+          className="h-8 min-w-[120px] text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
         >
           <option value="paragraphs">{t.ui.paragraphs}</option>
           <option value="sentences">{t.ui.sentences}</option>
           <option value="words">{t.ui.words}</option>
+          <option value="characters">{t.common.characters}</option>
         </select>
       </div>
 
@@ -107,10 +122,14 @@ export const LoremIpsumGenerator: React.FC = () => {
           id="lorem-count"
           type="number"
           min={1}
-          max={100}
+          max={type === "characters" ? 1000000 : 200}
           value={count}
-          onChange={(e) => setCount(Math.max(1, parseInt(e.target.value) || 1))}
-          className="w-16 text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-center"
+          onChange={(e) => {
+            const val = parseInt(e.target.value) || 1;
+            const maxVal = type === "characters" ? 1000000 : 200;
+            setCount(Math.min(Math.max(1, val), maxVal));
+          }}
+          className="h-8 w-28 text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-center"
         />
       </div>
 

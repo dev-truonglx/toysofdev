@@ -60,6 +60,8 @@ export const TextDiffComparer: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const oldTextRef = useRef<HTMLTextAreaElement>(null);
   const newTextRef = useRef<HTMLTextAreaElement>(null);
+  const oldGutterRef = useRef<HTMLDivElement>(null);
+  const newGutterRef = useRef<HTMLDivElement>(null);
 
   // Async diff with debounce & race-condition cancellation
   useEffect(() => {
@@ -557,20 +559,34 @@ export const TextDiffComparer: React.FC = () => {
                     </button>
                   </div>
                 </div>
-                <textarea
-                  ref={oldTextRef}
-                  value={oldText}
-                  onChange={(e) => setOldText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Tab" && !e.shiftKey) {
-                      e.preventDefault();
-                      newTextRef.current?.focus();
-                    }
-                  }}
-                  placeholder={t.ui.originalTextPlaceholder}
-                  spellCheck={false}
-                  className="w-full h-36 p-3 resize-y bg-transparent font-mono text-xs leading-relaxed focus:outline-none text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
-                />
+                <div className="flex w-full h-40 resize-y overflow-hidden relative">
+                  <div
+                    ref={oldGutterRef}
+                    className="w-10 h-full overflow-hidden flex flex-col items-end py-3 pr-2 bg-slate-50/50 dark:bg-slate-900/30 text-slate-400 dark:text-slate-500 font-mono text-xs leading-relaxed border-r border-slate-200 dark:border-slate-800 select-none shrink-0"
+                  >
+                    {Array.from({ length: Math.max(1, leftLineCount) }).map((_, i) => (
+                      <div key={i}>{i + 1}</div>
+                    ))}
+                  </div>
+                  <textarea
+                    ref={oldTextRef}
+                    value={oldText}
+                    onChange={(e) => setOldText(e.target.value)}
+                    onScroll={(e) => {
+                      if (oldGutterRef.current) oldGutterRef.current.scrollTop = e.currentTarget.scrollTop;
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Tab" && !e.shiftKey) {
+                        e.preventDefault();
+                        newTextRef.current?.focus();
+                      }
+                    }}
+                    placeholder={t.ui.originalTextPlaceholder}
+                    spellCheck={false}
+                    wrap="off"
+                    className="flex-1 h-full p-3 resize-none bg-transparent font-mono text-xs leading-relaxed focus:outline-none text-slate-900 dark:text-slate-100 placeholder:text-slate-400 whitespace-pre overflow-auto"
+                  />
+                </div>
               </div>
 
               {/* Right Input: Modified */}
@@ -616,20 +632,34 @@ export const TextDiffComparer: React.FC = () => {
                     </button>
                   </div>
                 </div>
-                <textarea
-                  ref={newTextRef}
-                  value={newText}
-                  onChange={(e) => setNewText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Tab" && e.shiftKey) {
-                      e.preventDefault();
-                      oldTextRef.current?.focus();
-                    }
-                  }}
-                  placeholder={t.ui.modifiedTextPlaceholder}
-                  spellCheck={false}
-                  className="w-full h-36 p-3 resize-y bg-transparent font-mono text-xs leading-relaxed focus:outline-none text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
-                />
+                <div className="flex w-full h-40 resize-y overflow-hidden relative">
+                  <div
+                    ref={newGutterRef}
+                    className="w-10 h-full overflow-hidden flex flex-col items-end py-3 pr-2 bg-slate-50/50 dark:bg-slate-900/30 text-slate-400 dark:text-slate-500 font-mono text-xs leading-relaxed border-r border-slate-200 dark:border-slate-800 select-none shrink-0"
+                  >
+                    {Array.from({ length: Math.max(1, rightLineCount) }).map((_, i) => (
+                      <div key={i}>{i + 1}</div>
+                    ))}
+                  </div>
+                  <textarea
+                    ref={newTextRef}
+                    value={newText}
+                    onChange={(e) => setNewText(e.target.value)}
+                    onScroll={(e) => {
+                      if (newGutterRef.current) newGutterRef.current.scrollTop = e.currentTarget.scrollTop;
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Tab" && e.shiftKey) {
+                        e.preventDefault();
+                        oldTextRef.current?.focus();
+                      }
+                    }}
+                    placeholder={t.ui.modifiedTextPlaceholder}
+                    spellCheck={false}
+                    wrap="off"
+                    className="flex-1 h-full p-3 resize-none bg-transparent font-mono text-xs leading-relaxed focus:outline-none text-slate-900 dark:text-slate-100 placeholder:text-slate-400 whitespace-pre overflow-auto"
+                  />
+                </div>
               </div>
             </div>
           )}

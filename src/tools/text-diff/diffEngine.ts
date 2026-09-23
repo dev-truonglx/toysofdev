@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { diff_match_patch, DIFF_EQUAL, DIFF_DELETE, DIFF_INSERT } from "diff-match-patch";
 
 export interface DiffSegment {
   text: string;
@@ -72,13 +72,6 @@ export function isBinaryBuffer(bytes: Uint8Array): boolean {
 }
 
 /**
- * Checks whether we are in a Tauri runtime environment.
- */
-function isTauri(): boolean {
-  return typeof window !== "undefined" && ("__TAURI_INTERNALS__" in window || "__TAURI__" in window);
-}
-
-/**
  * Normalizes line text based on options
  */
 export function normalizeLineText(line: string, options?: DiffOptions): string {
@@ -108,8 +101,10 @@ export function splitLines(text: string): string[] {
 
 
 
+const dmp = new diff_match_patch();
+
 /**
- * Word-level diff using Myers algorithm on word tokens.
+ * Word-level diff using diff-match-patch with semantic cleanup.
  */
 export function computeWordDiff(
   s1: string,
@@ -142,21 +137,20 @@ export function computeWordDiff(
     };
   }
 
-  const tokens1 = Array.from(s1);
-  const tokens2 = Array.from(s2);
+  const diffs = dmp.diff_main(s1, s2);
+  dmp.diff_cleanupSemantic(diffs);
 
-  const edits = myersDiffTokens(tokens1, tokens2, options);
   const left: DiffSegment[] = [];
   const right: DiffSegment[] = [];
 
-  for (const edit of edits) {
-    if (edit.type === "equal") {
-      pushSegment(left, edit.text, false);
-      pushSegment(right, edit.text, false);
-    } else if (edit.type === "delete") {
-      pushSegment(left, edit.text, true);
-    } else if (edit.type === "insert") {
-      pushSegment(right, edit.text, true);
+  for (const [op, text] of diffs) {
+    if (op === DIFF_EQUAL) {
+      pushSegment(left, text, false);
+      pushSegment(right, text, false);
+    } else if (op === DIFF_DELETE) {
+      pushSegment(left, text, true);
+    } else if (op === DIFF_INSERT) {
+      pushSegment(right, text, true);
     }
   }
 
@@ -173,101 +167,84 @@ function pushSegment(segments: DiffSegment[], text: string, isDiff: boolean) {
   }
 }
 
-/**
- * Token-level Myers Diff (O(ND)) for words
- */
-interface TokenEdit {
-  type: "equal" | "delete" | "insert";
-  text: string;
-}
+function alignHunk(
+  deletes: number[],
+  inserts: number[],
+  lines1: string[],
+  lines2: string[],
+  options?: DiffOptions
+): { oldIdx?: number; newIdx?: number }[] {
+  const N = deletes.length;
+  const M = inserts.length;
+  
+  if (N === 0) return inserts.map(i => ({ newIdx: i }));
+  if (M === 0) return deletes.map(d => ({ oldIdx: d }));
 
-function myersDiffTokens(tokens1: string[], tokens2: string[], options?: DiffOptions): TokenEdit[] {
-  const n = tokens1.length;
-  const m = tokens2.length;
-  const max = n + m;
+  const THRESHOLD = 0.35;
 
-  if (max === 0) return [];
+  const dp: number[][] = Array(N + 1).fill(0).map(() => Array(M + 1).fill(0));
+  const trace: number[][] = Array(N + 1).fill(0).map(() => Array(M + 1).fill(0));
 
-  const norm1 = options?.ignoreCase ? tokens1.map((t) => t.toLowerCase()) : tokens1;
-  const norm2 = options?.ignoreCase ? tokens2.map((t) => t.toLowerCase()) : tokens2;
+  for (let i = 1; i <= N; i++) trace[i][0] = 2; // UP
+  for (let j = 1; j <= M; j++) trace[0][j] = 3; // LEFT
 
-  // V array indexed from -max to max, offset by max
-  const v = new Int32Array(2 * max + 1);
-  const trace: Int32Array[] = [];
+  for (let i = 1; i <= N; i++) {
+    for (let j = 1; j <= M; j++) {
+      const s1 = normalizeLineText(lines1[deletes[i - 1]], options);
+      const s2 = normalizeLineText(lines2[inserts[j - 1]], options);
 
-  let foundD = -1;
-  for (let d = 0; d <= max; d++) {
-    const vCopy = new Int32Array(v);
-    trace.push(vCopy);
+      let sim = 0;
+      if (s1 === s2) {
+        sim = 1;
+      } else if (s1.length > 0 && s2.length > 0) {
+        const diffs = dmp.diff_main(s1, s2);
+        dmp.diff_cleanupSemantic(diffs);
+        let equalChars = 0;
+        for (const [op, text] of diffs) {
+          if (op === DIFF_EQUAL) equalChars += text.length;
+        }
+        sim = equalChars / Math.max(s1.length, s2.length);
+      }
 
-    for (let k = -d; k <= d; k += 2) {
-      let x: number;
-      if (k === -d || (k !== d && v[k - 1 + max] < v[k + 1 + max])) {
-        x = v[k + 1 + max];
+      // Penalize pairs that are far apart in relative indices to favor sequential alignment
+      const indexPenalty = Math.abs(i - j) * 0.1;
+      const matchScore = sim >= THRESHOLD ? sim - indexPenalty : -1;
+
+      const scoreDiag = dp[i - 1][j - 1] + matchScore;
+      const scoreUp = dp[i - 1][j];
+      const scoreLeft = dp[i][j - 1];
+
+      if (scoreDiag >= scoreUp && scoreDiag >= scoreLeft && matchScore !== -1) {
+        dp[i][j] = scoreDiag;
+        trace[i][j] = 1; // DIAG
+      } else if (scoreUp >= scoreLeft) {
+        dp[i][j] = scoreUp;
+        trace[i][j] = 2; // UP
       } else {
-        x = v[k - 1 + max] + 1;
-      }
-
-      let y = x - k;
-      while (x < n && y < m && norm1[x] === norm2[y]) {
-        x++;
-        y++;
-      }
-
-      v[k + max] = x;
-
-      if (x >= n && y >= m) {
-        foundD = d;
-        break;
-      }
-    }
-
-    if (foundD !== -1) break;
-  }
-
-  // Backtrack to find edits
-  const edits: TokenEdit[] = [];
-  let x = n;
-  let y = m;
-
-  for (let d = trace.length - 1; d > 0; d--) {
-    const vPrev = trace[d];
-    const k = x - y;
-
-    let prevK: number;
-    if (k === -d || (k !== d && vPrev[k - 1 + max] < vPrev[k + 1 + max])) {
-      prevK = k + 1;
-    } else {
-      prevK = k - 1;
-    }
-
-    const prevX = vPrev[prevK + max];
-    const prevY = prevX - prevK;
-
-    while (x > prevX && y > prevY) {
-      x--;
-      y--;
-      edits.unshift({ type: "equal", text: tokens1[x] });
-    }
-
-    if (d > 0) {
-      if (x === prevX) {
-        y--;
-        edits.unshift({ type: "insert", text: tokens2[y] });
-      } else {
-        x--;
-        edits.unshift({ type: "delete", text: tokens1[x] });
+        dp[i][j] = scoreLeft;
+        trace[i][j] = 3; // LEFT
       }
     }
   }
 
-  while (x > 0 && y > 0) {
-    x--;
-    y--;
-    edits.unshift({ type: "equal", text: tokens1[x] });
+  const pairs: { oldIdx?: number; newIdx?: number }[] = [];
+  let i = N;
+  let j = M;
+  while (i > 0 || j > 0) {
+    if (trace[i][j] === 1) {
+      pairs.unshift({ oldIdx: deletes[i - 1], newIdx: inserts[j - 1] });
+      i--;
+      j--;
+    } else if (trace[i][j] === 2) {
+      pairs.unshift({ oldIdx: deletes[i - 1] });
+      i--;
+    } else if (trace[i][j] === 3) {
+      pairs.unshift({ newIdx: inserts[j - 1] });
+      j--;
+    }
   }
 
-  return edits;
+  return pairs;
 }
 
 /**
@@ -497,14 +474,14 @@ export function computeJsDiff(oldText: string, newText: string, options?: DiffOp
           i++;
         }
 
-        const maxDiff = Math.max(deletes.length, inserts.length);
-        for (let k = 0; k < maxDiff; k++) {
-          const hasOld = k < deletes.length;
-          const hasNew = k < inserts.length;
+        const alignedPairs = alignHunk(deletes, inserts, lines1, lines2, options);
+        for (const pair of alignedPairs) {
+          const hasOld = pair.oldIdx !== undefined;
+          const hasNew = pair.newIdx !== undefined;
 
           if (hasOld && hasNew) {
-            const oi = deletes[k];
-            const ni = inserts[k];
+            const oi = pair.oldIdx!;
+            const ni = pair.newIdx!;
             const s1 = lines1[oi];
             const s2 = lines2[ni];
             const wordDiff = wordDiffDisabled
@@ -535,7 +512,7 @@ export function computeJsDiff(oldText: string, newText: string, options?: DiffOp
               },
             });
           } else if (hasOld && !hasNew) {
-            const oi = deletes[k];
+            const oi = pair.oldIdx!;
             const s1 = lines1[oi];
             differencesCount++;
             rows.push({
@@ -554,7 +531,7 @@ export function computeJsDiff(oldText: string, newText: string, options?: DiffOp
               },
             });
           } else if (!hasOld && hasNew) {
-            const ni = inserts[k];
+            const ni = pair.newIdx!;
             const s2 = lines2[ni];
             differencesCount++;
             rows.push({
@@ -614,28 +591,14 @@ export function computeJsDiff(oldText: string, newText: string, options?: DiffOp
 }
 
 /**
- * Main entry point: Calls Rust native backend in Tauri, falls back to TypeScript Myers diff in browser.
+ * Main entry point: Fully client-side JS implementation.
+ * Uses high-performance Myers for lines, and diff-match-patch for word/char segments.
  */
 export async function computeDiff(
   oldText: string,
   newText: string,
   options?: DiffOptions,
 ): Promise<DiffResult> {
-  if (isTauri()) {
-    try {
-      const result = await invoke<DiffResult>("compute_text_diff", {
-        oldText,
-        newText,
-        ignoreWhitespace: options?.ignoreWhitespace,
-        ignoreCase: options?.ignoreCase,
-        forceAll: options?.forceAll,
-      });
-      return result;
-    } catch (err) {
-      console.warn("Tauri native diff failed or unavailable, falling back to JS Myers diff:", err);
-    }
-  }
-
-  // Fallback to high-performance JS Myers
-  return computeJsDiff(oldText, newText, options);
+  // Run high-performance JS Myers
+  return Promise.resolve(computeJsDiff(oldText, newText, options));
 }
