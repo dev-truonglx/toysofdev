@@ -1,6 +1,6 @@
 [package]
 name = "toysofdev"
-version = "0.0.5"
+version = "0.0.6"
 description = "Toys of Dev - Local-First Developer Tools"
 authors = ["Antigravity"]
 edition = "2021"
