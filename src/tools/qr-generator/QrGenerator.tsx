@@ -8,7 +8,7 @@ type ErrorCorrectionLevel = "L" | "M" | "Q" | "H";
 
 export const QrGenerator: React.FC = () => {
   const { t } = useTranslation();
-  const [input, setInput] = useState("https://github.com/DevToys-app/DevToys");
+  const [input, setInput] = useState("https://github.com/dev-truonglx/toysofdev");
   const [ecLevel, setEcLevel] = useState<ErrorCorrectionLevel>("M");
   const [dataUrl, setDataUrl] = useState<string>("");
   const [error, setError] = useState<string | null>(null);

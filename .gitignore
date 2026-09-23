@@ -25,3 +25,5 @@ dist-ssr
 
 # Tauri build artifacts
 src-tauri/target
+dist-win
+release_dist

@@ -4,6 +4,8 @@ import {
   saveBookmarksToDisk,
   loadLanguageFromDisk,
   saveLanguageToDisk,
+  loadSidebarCollapsedFromDisk,
+  saveSidebarCollapsedToDisk,
 } from "../services/storeService";
 import { Language } from "../i18n/types";
 
@@ -23,7 +25,8 @@ interface AppState {
   setSearchQuery: (query: string) => void;
   setThemeMode: (mode: ThemeMode) => void;
   setLanguage: (lang: Language) => Promise<void>;
-  toggleSidebar: () => void;
+  toggleSidebar: () => Promise<void>;
+  setSidebarCollapsed: (collapsed: boolean) => Promise<void>;
   initStore: () => Promise<void>;
   toggleBookmark: (toolId: string) => Promise<void>;
   isBookmarked: (toolId: string) => boolean;
@@ -48,16 +51,26 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ language: lang });
     await saveLanguageToDisk(lang);
   },
-  toggleSidebar: () => set((state) => ({ isSidebarCollapsed: !state.isSidebarCollapsed })),
+  toggleSidebar: async () => {
+    const next = !get().isSidebarCollapsed;
+    set({ isSidebarCollapsed: next });
+    await saveSidebarCollapsedToDisk(next);
+  },
+  setSidebarCollapsed: async (collapsed: boolean) => {
+    set({ isSidebarCollapsed: collapsed });
+    await saveSidebarCollapsedToDisk(collapsed);
+  },
 
   initStore: async () => {
-    const [loadedBookmarks, loadedLanguage] = await Promise.all([
+    const [loadedBookmarks, loadedLanguage, loadedSidebarCollapsed] = await Promise.all([
       loadBookmarksFromDisk(),
       loadLanguageFromDisk(),
+      loadSidebarCollapsedFromDisk(),
     ]);
     set({
       bookmarkedIds: loadedBookmarks,
       language: loadedLanguage,
+      isSidebarCollapsed: loadedSidebarCollapsed,
       isInitialized: true,
     });
     // Apply initial system theme

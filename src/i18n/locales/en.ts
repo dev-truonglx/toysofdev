@@ -30,6 +30,8 @@ export const en: TranslationSchema = {
     updateDownloadedTitle: "Update downloaded!",
     updateRestartNow: "Restart Now",
     updateDismiss: "Dismiss",
+    collapseSidebar: "Collapse Sidebar",
+    expandSidebar: "Expand Sidebar",
   },
   theme: {
     system: "System Theme",
@@ -196,6 +198,10 @@ export const en: TranslationSchema = {
     "jsonpath-tester": {
       title: "JSONPath Tester",
       description: "Query and extract elements from JSON documents using JSONPath expressions",
+    },
+    "log-grep": {
+      title: "Log Grep & Filter",
+      description: "Filter, grep and analyze log lines using literal text or regular expressions with context lines and preset patterns",
     },
   },
   toolLayout: {
@@ -374,5 +380,9 @@ export const en: TranslationSchema = {
     deletedFilter: "Deleted",
     noData: "No content to compare",
     dragDropPrompt: "Drag & drop files here or click to browse",
+    fastDiffActive: "Speed optimized: Word-level diff auto-disabled for large text (> 10,000 lines)",
+    largeFileWarning: "Large text detected (> 50,000 lines). Optimizing processing speed.",
+    truncatedWarning: "Text exceeds safe threshold (100,000 lines). First 50,000 lines compared to preserve memory.",
+    compareAllAnyway: "Compare all anyway",
   },
 };

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   GitCompare,
   Copy,
@@ -11,175 +11,24 @@ import {
   Columns,
   AlignJustify,
   Sparkles,
+  Loader2,
+  AlertTriangle,
+  Zap,
 } from "lucide-react";
 import { ToolLayout } from "../../components/common/ToolLayout";
 import { useTranslation } from "../../i18n";
+import { computeDiff, AlignedRow, DiffSegment, splitLines } from "./diffEngine";
 
-interface DiffSegment {
+const ROW_HEIGHT = 24; // Fixed 24px height per row
+const OVERSCAN = 15; // Extra rows rendered above and below viewport
+
+interface UnifiedLine {
+  type: "equal" | "delete" | "insert";
+  leftLineNum?: number;
+  rightLineNum?: number;
   text: string;
-  isDiff: boolean;
-}
-
-interface AlignedRow {
-  isChanged: boolean;
-  left: {
-    lineNum?: number;
-    text: string;
-    segments: DiffSegment[];
-    isSpacer: boolean;
-  };
-  right: {
-    lineNum?: number;
-    text: string;
-    segments: DiffSegment[];
-    isSpacer: boolean;
-  };
-}
-
-// Compute Longest Common Subsequence of lines with minimal index displacement
-function computeLineLCS(lines1: string[], lines2: string[]): { oldIdx: number; newIdx: number }[] {
-  const m = lines1.length;
-  const n = lines2.length;
-  const dp: { len: number; disp: number }[][] = Array.from({ length: m + 1 }, () =>
-    Array.from({ length: n + 1 }, () => ({ len: 0, disp: 0 })),
-  );
-
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      if (lines1[i - 1] === lines2[j - 1]) {
-        const prev = dp[i - 1][j - 1];
-        dp[i][j] = {
-          len: prev.len + 1,
-          disp: prev.disp + Math.abs(i - 1 - (j - 1)),
-        };
-      } else {
-        const top = dp[i - 1][j];
-        const left = dp[i][j - 1];
-        if (top.len > left.len) {
-          dp[i][j] = { ...top };
-        } else if (left.len > top.len) {
-          dp[i][j] = { ...left };
-        } else {
-          dp[i][j] = top.disp <= left.disp ? { ...top } : { ...left };
-        }
-      }
-    }
-  }
-
-  let i = m;
-  let j = n;
-  const matches: { oldIdx: number; newIdx: number }[] = [];
-  while (i > 0 && j > 0) {
-    if (lines1[i - 1] === lines2[j - 1]) {
-      const diag = dp[i - 1][j - 1];
-      const curr = dp[i][j];
-      if (curr.len === diag.len + 1) {
-        matches.unshift({ oldIdx: i - 1, newIdx: j - 1 });
-        i--;
-        j--;
-        continue;
-      }
-    }
-    const top = dp[i - 1][j];
-    const left = dp[i][j - 1];
-    if (top.len > left.len) {
-      i--;
-    } else if (left.len > top.len) {
-      j--;
-    } else {
-      if (top.disp <= left.disp) i--;
-      else j--;
-    }
-  }
-  return matches;
-}
-
-// Exact character-level diff with prefix/suffix preservation and recursive sub-matching
-function getDetailedLineDiff(s1: string, s2: string): { left: DiffSegment[]; right: DiffSegment[] } {
-  if (s1 === s2) {
-    return {
-      left: [{ text: s1, isDiff: false }],
-      right: [{ text: s2, isDiff: false }],
-    };
-  }
-
-  // Longest common prefix
-  let start = 0;
-  while (start < s1.length && start < s2.length && s1[start] === s2[start]) {
-    start++;
-  }
-
-  // Longest common suffix
-  let end1 = s1.length - 1;
-  let end2 = s2.length - 1;
-  while (end1 >= start && end2 >= start && s1[end1] === s2[end2]) {
-    end1--;
-    end2--;
-  }
-
-  const prefix = s1.substring(0, start);
-  const mid1 = s1.substring(start, end1 + 1);
-  const mid2 = s2.substring(start, end2 + 1);
-  const suffix = s1.substring(end1 + 1);
-
-  const leftRes: DiffSegment[] = [];
-  const rightRes: DiffSegment[] = [];
-
-  if (prefix) {
-    leftRes.push({ text: prefix, isDiff: false });
-    rightRes.push({ text: prefix, isDiff: false });
-  }
-
-  // Check if mid1 and mid2 have an internal common substring >= 2 chars
-  if (mid1 && mid2) {
-    let bestSub = "";
-    let bestI = -1;
-    let bestJ = -1;
-
-    for (let len = Math.min(mid1.length, mid2.length); len >= 2; len--) {
-      for (let i = 0; i <= mid1.length - len; i++) {
-        const sub = mid1.substring(i, i + len);
-        const j = mid2.indexOf(sub);
-        if (j !== -1) {
-          bestSub = sub;
-          bestI = i;
-          bestJ = j;
-          break;
-        }
-      }
-      if (bestSub) break;
-    }
-
-    if (bestSub) {
-      const subDiff1 = getDetailedLineDiff(mid1.substring(0, bestI), mid2.substring(0, bestJ));
-      const subDiff2 = getDetailedLineDiff(
-        mid1.substring(bestI + bestSub.length),
-        mid2.substring(bestJ + bestSub.length),
-      );
-
-      leftRes.push(...subDiff1.left);
-      rightRes.push(...subDiff1.right);
-
-      leftRes.push({ text: bestSub, isDiff: false });
-      rightRes.push({ text: bestSub, isDiff: false });
-
-      leftRes.push(...subDiff2.left);
-      rightRes.push(...subDiff2.right);
-    } else {
-      leftRes.push({ text: mid1, isDiff: true });
-      rightRes.push({ text: mid2, isDiff: true });
-    }
-  } else {
-    if (mid1) leftRes.push({ text: mid1, isDiff: true });
-    if (mid2) rightRes.push({ text: mid2, isDiff: true });
-  }
-
-  if (suffix) {
-    leftRes.push({ text: suffix, isDiff: false });
-    rightRes.push({ text: suffix, isDiff: false });
-  }
-
-  return { left: leftRes, right: rightRes };
+  segments: DiffSegment[];
+  isOriginalChanged: boolean;
 }
 
 export const TextDiffComparer: React.FC = () => {
@@ -190,135 +39,269 @@ export const TextDiffComparer: React.FC = () => {
   const [showInputs, setShowInputs] = useState(true);
   const [copiedSide, setCopiedSide] = useState<"left" | "right" | null>(null);
 
+  // Diff engine state
+  const [alignedRows, setAlignedRows] = useState<AlignedRow[]>([]);
+  const [totalDifferences, setTotalDifferences] = useState(0);
+  const [isComputing, setIsComputing] = useState(false);
+  const [isTruncated, setIsTruncated] = useState(false);
+  const [wordDiffDisabled, setWordDiffDisabled] = useState(false);
+  const [forceAll, setForceAll] = useState(false);
+
+  // Virtual scrolling state
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(500);
+
   const leftScrollRef = useRef<HTMLDivElement>(null);
   const rightScrollRef = useRef<HTMLDivElement>(null);
+  const unifiedScrollRef = useRef<HTMLDivElement>(null);
+  const viewportContainerRef = useRef<HTMLDivElement>(null);
+  const isSyncingLeft = useRef(false);
+  const isSyncingRight = useRef(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Sync scroll between left and right panes in side-by-side mode
-  const handleScroll = (source: "left" | "right") => {
-    if (source === "left" && leftScrollRef.current && rightScrollRef.current) {
-      rightScrollRef.current.scrollTop = leftScrollRef.current.scrollTop;
-      rightScrollRef.current.scrollLeft = leftScrollRef.current.scrollLeft;
-    } else if (source === "right" && leftScrollRef.current && rightScrollRef.current) {
-      leftScrollRef.current.scrollTop = rightScrollRef.current.scrollTop;
-      leftScrollRef.current.scrollLeft = rightScrollRef.current.scrollLeft;
-    }
-  };
+  // Async diff with debounce & race-condition cancellation
+  useEffect(() => {
+    let isCurrent = true;
+    setIsComputing(true);
 
-  // Align lines using LCS and hunk pairing
-  const alignedRows: AlignedRow[] = useMemo(() => {
-    const lines1 = oldText ? oldText.split("\n") : [];
-    const lines2 = newText ? newText.split("\n") : [];
+    const timer = setTimeout(async () => {
+      try {
+        const result = await computeDiff(oldText, newText, { forceAll });
+        if (isCurrent) {
+          setAlignedRows(result.rows);
+          setTotalDifferences(result.differencesCount);
+          setIsTruncated(result.isTruncated || false);
+          setWordDiffDisabled(result.wordDiffDisabled || false);
+          setIsComputing(false);
+        }
+      } catch (err) {
+        if (isCurrent) {
+          console.error("Diff calculation error:", err);
+          setIsComputing(false);
+        }
+      }
+    }, 120);
 
-    if (lines1.length === 0 && lines2.length === 0) return [];
+    return () => {
+      isCurrent = false;
+      clearTimeout(timer);
+    };
+  }, [oldText, newText, forceAll]);
 
-    const matches = computeLineLCS(lines1, lines2);
-    const allMatches = [...matches, { oldIdx: lines1.length, newIdx: lines2.length }];
-    const rows: AlignedRow[] = [];
+  // Monitor viewport container height
+  useEffect(() => {
+    const el = viewportContainerRef.current;
+    if (!el) return;
 
-    let lastOld = 0;
-    let lastNew = 0;
+    const updateHeight = () => {
+      if (el.clientHeight > 0) {
+        setViewportHeight(el.clientHeight);
+      }
+    };
 
-    for (const match of allMatches) {
-      const oldDiffCount = match.oldIdx - lastOld;
-      const newDiffCount = match.newIdx - lastNew;
-      const maxDiff = Math.max(oldDiffCount, newDiffCount);
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [viewMode]);
 
-      // Pair changed lines within this hunk
-      for (let k = 0; k < maxDiff; k++) {
-        const hasOld = k < oldDiffCount;
-        const hasNew = k < newDiffCount;
+  // Flatten rows for unified mode so each element has exactly ROW_HEIGHT
+  const unifiedLines: UnifiedLine[] = useMemo(() => {
+    if (viewMode !== "unified") return [];
+    const lines: UnifiedLine[] = [];
 
-        const oldLineIdx = hasOld ? lastOld + k : null;
-        const newLineIdx = hasNew ? lastNew + k : null;
-
-        const s1 = oldLineIdx !== null ? lines1[oldLineIdx] : "";
-        const s2 = newLineIdx !== null ? lines2[newLineIdx] : "";
-
-        if (oldLineIdx !== null && newLineIdx !== null) {
-          // Line substitution / modification
-          const diff = getDetailedLineDiff(s1, s2);
-          rows.push({
-            isChanged: true,
-            left: {
-              lineNum: oldLineIdx + 1,
-              text: s1,
-              segments: diff.left,
-              isSpacer: false,
-            },
-            right: {
-              lineNum: newLineIdx + 1,
-              text: s2,
-              segments: diff.right,
-              isSpacer: false,
-            },
+    for (const row of alignedRows) {
+      if (!row.isChanged) {
+        lines.push({
+          type: "equal",
+          leftLineNum: row.left.lineNum,
+          rightLineNum: row.right.lineNum,
+          text: row.left.text,
+          segments: row.left.segments,
+          isOriginalChanged: false,
+        });
+      } else {
+        if (!row.left.isSpacer) {
+          lines.push({
+            type: "delete",
+            leftLineNum: row.left.lineNum,
+            rightLineNum: undefined,
+            text: row.left.text,
+            segments: row.left.segments,
+            isOriginalChanged: true,
           });
-        } else if (oldLineIdx !== null && newLineIdx === null) {
-          // Deleted line from left (spacer on right)
-          rows.push({
-            isChanged: true,
-            left: {
-              lineNum: oldLineIdx + 1,
-              text: s1,
-              segments: [{ text: s1, isDiff: true }],
-              isSpacer: false,
-            },
-            right: {
-              text: "",
-              segments: [],
-              isSpacer: true,
-            },
-          });
-        } else if (oldLineIdx === null && newLineIdx !== null) {
-          // Added line to right (spacer on left)
-          rows.push({
-            isChanged: true,
-            left: {
-              text: "",
-              segments: [],
-              isSpacer: true,
-            },
-            right: {
-              lineNum: newLineIdx + 1,
-              text: s2,
-              segments: [{ text: s2, isDiff: true }],
-              isSpacer: false,
-            },
+        }
+        if (!row.right.isSpacer) {
+          lines.push({
+            type: "insert",
+            leftLineNum: undefined,
+            rightLineNum: row.right.lineNum,
+            text: row.right.text,
+            segments: row.right.segments,
+            isOriginalChanged: true,
           });
         }
       }
-
-      // Add matching unchanged line
-      if (match.oldIdx < lines1.length && match.newIdx < lines2.length) {
-        const matchingText = lines1[match.oldIdx];
-        rows.push({
-          isChanged: false,
-          left: {
-            lineNum: match.oldIdx + 1,
-            text: matchingText,
-            segments: [{ text: matchingText, isDiff: false }],
-            isSpacer: false,
-          },
-          right: {
-            lineNum: match.newIdx + 1,
-            text: matchingText,
-            segments: [{ text: matchingText, isDiff: false }],
-            isSpacer: false,
-          },
-        });
-      }
-
-      lastOld = match.oldIdx + 1;
-      lastNew = match.newIdx + 1;
     }
 
-    return rows;
-  }, [oldText, newText]);
+    return lines;
+  }, [alignedRows, viewMode]);
 
-  const leftLineCount = oldText ? oldText.split("\n").length : 0;
-  const rightLineCount = newText ? newText.split("\n").length : 0;
+  // Total items in the active virtual list
+  const totalItems = viewMode === "split" ? alignedRows.length : unifiedLines.length;
+  const totalHeight = totalItems * ROW_HEIGHT;
+
+  // Virtual window calculation
+  const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
+  const endIndex = Math.min(totalItems, Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + OVERSCAN);
+  const topPadding = startIndex * ROW_HEIGHT;
+  const bottomPadding = Math.max(0, (totalItems - endIndex) * ROW_HEIGHT);
+
+  const visibleSplitRows = useMemo(() => {
+    if (viewMode !== "split") return [];
+    return alignedRows.slice(startIndex, endIndex);
+  }, [alignedRows, startIndex, endIndex, viewMode]);
+
+  const visibleUnifiedLines = useMemo(() => {
+    if (viewMode !== "unified") return [];
+    return unifiedLines.slice(startIndex, endIndex);
+  }, [unifiedLines, startIndex, endIndex, viewMode]);
+
+  // Handle synchronized virtual scrolling
+  const handleLeftScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (isSyncingLeft.current) {
+      isSyncingLeft.current = false;
+      return;
+    }
+    const { scrollTop: newScrollTop, scrollLeft: newScrollLeft } = e.currentTarget;
+    if (rightScrollRef.current) {
+      isSyncingRight.current = true;
+      if (Math.abs(rightScrollRef.current.scrollTop - newScrollTop) > 0.5) {
+        rightScrollRef.current.scrollTop = newScrollTop;
+      }
+      if (Math.abs(rightScrollRef.current.scrollLeft - newScrollLeft) > 0.5) {
+        rightScrollRef.current.scrollLeft = newScrollLeft;
+      }
+    }
+    setScrollTop(newScrollTop);
+  }, []);
+
+  const handleRightScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (isSyncingRight.current) {
+      isSyncingRight.current = false;
+      return;
+    }
+    const { scrollTop: newScrollTop, scrollLeft: newScrollLeft } = e.currentTarget;
+    if (leftScrollRef.current) {
+      isSyncingLeft.current = true;
+      if (Math.abs(leftScrollRef.current.scrollTop - newScrollTop) > 0.5) {
+        leftScrollRef.current.scrollTop = newScrollTop;
+      }
+      if (Math.abs(leftScrollRef.current.scrollLeft - newScrollLeft) > 0.5) {
+        leftScrollRef.current.scrollLeft = newScrollLeft;
+      }
+    }
+    setScrollTop(newScrollTop);
+  }, []);
+
+  const handleUnifiedScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    setScrollTop(e.currentTarget.scrollTop);
+  }, []);
+
+  // Compute maximum line lengths for stable synchronized horizontal scrolling
+  const maxSplitCharCount = useMemo(() => {
+    let max = 0;
+    for (const row of alignedRows) {
+      if (!row.left.isSpacer && row.left.text.length > max) max = row.left.text.length;
+      if (!row.right.isSpacer && row.right.text.length > max) max = row.right.text.length;
+    }
+    return max;
+  }, [alignedRows]);
+
+  const maxUnifiedCharCount = useMemo(() => {
+    let max = 0;
+    for (const line of unifiedLines) {
+      if (line.text.length > max) max = line.text.length;
+    }
+    return max;
+  }, [unifiedLines]);
+
+  // Draw high-performance Canvas Minimap
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || totalItems === 0) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const canvasWidth = canvas.width;
+    const canvasHeight = canvas.height;
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+
+    const scale = canvasHeight / totalItems;
+
+    if (viewMode === "split") {
+      for (let i = 0; i < alignedRows.length; i++) {
+        const row = alignedRows[i];
+        if (!row.isChanged) continue;
+
+        const y = i * scale;
+        const h = Math.max(1.5, scale);
+
+        const isDel = !row.left.isSpacer && row.right.isSpacer;
+        const isAdd = row.left.isSpacer && !row.right.isSpacer;
+        const isMod = !row.left.isSpacer && !row.right.isSpacer;
+
+        if (isMod) {
+          ctx.fillStyle = "#f87171";
+          ctx.fillRect(0, y, canvasWidth / 2, h);
+          ctx.fillStyle = "#2dd4bf";
+          ctx.fillRect(canvasWidth / 2, y, canvasWidth / 2, h);
+        } else if (isDel) {
+          ctx.fillStyle = "#f87171";
+          ctx.fillRect(0, y, canvasWidth, h);
+        } else if (isAdd) {
+          ctx.fillStyle = "#2dd4bf";
+          ctx.fillRect(0, y, canvasWidth, h);
+        }
+      }
+    } else {
+      for (let i = 0; i < unifiedLines.length; i++) {
+        const line = unifiedLines[i];
+        if (line.type === "equal") continue;
+
+        const y = i * scale;
+        const h = Math.max(1.5, scale);
+
+        ctx.fillStyle = line.type === "delete" ? "#f87171" : "#2dd4bf";
+        ctx.fillRect(0, y, canvasWidth, h);
+      }
+    }
+  }, [alignedRows, unifiedLines, totalItems, totalHeight, viewportHeight, viewMode]);
+
+  // Click on minimap to jump
+  const handleMinimapClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas || totalHeight === 0) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const clickY = e.clientY - rect.top;
+    const targetRatio = clickY / rect.height;
+    const targetScrollTop = Math.max(0, targetRatio * totalHeight - viewportHeight / 2);
+
+    if (viewMode === "split") {
+      if (leftScrollRef.current) leftScrollRef.current.scrollTop = targetScrollTop;
+      if (rightScrollRef.current) rightScrollRef.current.scrollTop = targetScrollTop;
+    } else {
+      if (unifiedScrollRef.current) unifiedScrollRef.current.scrollTop = targetScrollTop;
+    }
+    setScrollTop(targetScrollTop);
+  };
+
+  const leftLineCount = oldText ? splitLines(oldText).length : 0;
+  const rightLineCount = newText ? splitLines(newText).length : 0;
   const leftCharCount = oldText.length;
   const rightCharCount = newText.length;
-  const totalDifferences = alignedRows.filter((r) => r.isChanged).length;
 
   const copyText = (text: string, side: "left" | "right") => {
     navigator.clipboard.writeText(text);
@@ -344,9 +327,10 @@ export const TextDiffComparer: React.FC = () => {
   const handleClearAll = () => {
     setOldText("");
     setNewText("");
+    setForceAll(false);
   };
 
-  // Render character diff segments with color badge matching the user's design
+  // Render character/word diff segments
   const renderSegments = (
     segments: DiffSegment[],
     isSpacer: boolean,
@@ -356,29 +340,30 @@ export const TextDiffComparer: React.FC = () => {
   ) => {
     if (isSpacer) return <span className="opacity-0 select-none">{" "}</span>;
     if (!segments || segments.length === 0) {
-      return <span>{fallbackText || " "}</span>;
+      const text = fallbackText || " ";
+      const display = text.length > 2500 ? text.slice(0, 2500) + "..." : text;
+      return <span>{display}</span>;
     }
 
     return segments.map((seg, idx) => {
+      const text = seg.text.length > 2500 ? seg.text.slice(0, 2500) + "..." : seg.text;
       if (seg.isDiff) {
         if (side === "left") {
-          // Left differing segment: soft red badge
           return (
             <span
               key={idx}
               className="bg-[#fca5a5] text-[#7f1d1d] dark:bg-rose-900/90 dark:text-rose-100 font-medium px-0.5 rounded-xs"
             >
-              {seg.text}
+              {text}
             </span>
           );
         } else {
-          // Right differing segment: soft teal/mint badge
           return (
             <span
               key={idx}
               className="bg-[#99f6e4] text-[#115e59] dark:bg-teal-900/90 dark:text-teal-100 font-medium px-0.5 rounded-xs"
             >
-              {seg.text}
+              {text}
             </span>
           );
         }
@@ -470,16 +455,28 @@ export const TextDiffComparer: React.FC = () => {
           )}
         </button>
 
-        {/* Differences count badge */}
-        <span
-          className={`px-2.5 py-1 rounded-lg text-xs font-mono font-medium border ${
-            totalDifferences > 0
-              ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30"
-              : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
-          }`}
-        >
-          {totalDifferences > 0 ? `${totalDifferences} ${t.diff.differencesCount}` : t.diff.allMatching}
-        </span>
+        {/* Differences count badge & Computing spinner */}
+        <div className="flex items-center gap-1.5">
+          {isComputing && <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />}
+          <span
+            className={`px-2.5 py-1 rounded-lg text-xs font-mono font-medium border ${
+              totalDifferences > 0
+                ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30"
+                : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+            }`}
+          >
+            {totalDifferences > 0 ? `${totalDifferences} ${t.diff.differencesCount}` : t.diff.allMatching}
+          </span>
+          {wordDiffDisabled && (
+            <span
+              className="hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-mono font-medium border bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30"
+              title={t.diff.fastDiffActive}
+            >
+              <Zap className="w-3.5 h-3.5 text-sky-500" />
+              <span>Fast Line Diff</span>
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -494,10 +491,34 @@ export const TextDiffComparer: React.FC = () => {
       configuration={config}
       customPanes={
         <div className="flex flex-col flex-1 gap-4 overflow-hidden">
-          {/* 1. DEDICATED INPUT TEXTAREAS (2 Ô NHẬP RIÊNG BIỆT) */}
+          {/* Truncation warning banner */}
+          {isTruncated && (
+            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs shrink-0 shadow-xs">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                <span>{t.diff.truncatedWarning}</span>
+              </div>
+              <button
+                onClick={() => setForceAll(true)}
+                className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-medium transition-colors text-xs shrink-0 shadow-xs cursor-pointer"
+              >
+                {t.diff.compareAllAnyway}
+              </button>
+            </div>
+          )}
+
+          {/* Large text info note (> 50,000 lines) */}
+          {!isTruncated && (leftLineCount > 50000 || rightLineCount > 50000) && (
+            <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-800 dark:text-blue-300 text-xs shrink-0">
+              <Sparkles className="w-3.5 h-3.5 shrink-0 text-blue-500" />
+              <span>{t.diff.largeFileWarning}</span>
+            </div>
+          )}
+
+          {/* 1. INPUT TEXTAREAS */}
           {showInputs && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 shrink-0">
-              {/* Left Input: Văn bản gốc */}
+              {/* Left Input: Original */}
               <div className="flex flex-col rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
                 <div className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 text-xs select-none">
                   <div className="flex items-center gap-2">
@@ -546,7 +567,7 @@ export const TextDiffComparer: React.FC = () => {
                 />
               </div>
 
-              {/* Right Input: Văn bản đã sửa */}
+              {/* Right Input: Modified */}
               <div className="flex flex-col rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
                 <div className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 text-xs select-none">
                   <div className="flex items-center gap-2">
@@ -597,15 +618,13 @@ export const TextDiffComparer: React.FC = () => {
             </div>
           )}
 
-          {/* 2. DIFF RESULTS CONTAINER */}
+          {/* 2. VIRTUALIZED DIFF RESULTS CONTAINER */}
           <div className="flex flex-col flex-1 min-h-[380px] rounded-xl border border-slate-300/80 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-xs">
             {/* Diff Results Sub-Header with Legend */}
-            <div className="flex flex-wrap items-center justify-between px-3.5 py-2 bg-slate-50 dark:bg-slate-850 border-b border-slate-300/80 dark:border-slate-800 text-xs">
+            <div className="flex flex-wrap items-center justify-between px-3.5 py-2 bg-slate-50 dark:bg-slate-850 border-b border-slate-300/80 dark:border-slate-800 text-xs shrink-0">
               <div className="flex items-center gap-3">
                 <span className="font-semibold text-slate-800 dark:text-slate-200">
-                  {viewMode === "split"
-                    ? `${t.diff.split}`
-                    : `${t.diff.unified}`}
+                  {viewMode === "split" ? t.diff.split : t.diff.unified}
                 </span>
 
                 {/* Legend Badges */}
@@ -626,241 +645,260 @@ export const TextDiffComparer: React.FC = () => {
               </div>
 
               <span className="text-[11px] text-slate-400 font-mono">
-                {alignedRows.length} {t.common.lines}
+                {totalItems} {t.common.lines}
               </span>
             </div>
 
             {/* Empty State */}
-            {alignedRows.length === 0 ? (
+            {totalItems === 0 ? (
               <div className="flex flex-col items-center justify-center flex-1 p-8 text-center text-slate-400">
                 <Sparkles className="w-8 h-8 mb-2 text-slate-300 dark:text-slate-600" />
                 <p className="text-sm font-medium">{t.diff.noData}</p>
                 <p className="text-xs text-slate-400 mt-1">
-                  {language === "vi" ? "Nhập hoặc dán văn bản vào hai ô phía trên để bắt đầu so sánh" : "Paste or type text into the input boxes above to compare"}
+                  {language === "vi"
+                    ? "Nhập hoặc dán văn bản vào hai ô phía trên để bắt đầu so sánh"
+                    : "Paste or type text into the input boxes above to compare"}
                 </p>
               </div>
-            ) : viewMode === "split" ? (
-              /* A. SIDE-BY-SIDE (SONG SONG) VIEW WITH OVERVIEW RULER */
-              <div className="flex flex-1 overflow-hidden">
-                <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-slate-300/80 dark:divide-slate-800 flex-1 overflow-hidden">
-                  {/* Left Column: Original */}
-                  <div className="flex flex-col h-full overflow-hidden">
-                    <div className="px-3 py-1.5 bg-slate-100/70 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider select-none">
-                      Gốc (Original)
-                    </div>
-                    <div
-                      ref={leftScrollRef}
-                      onScroll={() => handleScroll("left")}
-                      className="flex-1 overflow-auto font-mono text-xs leading-6 py-1 bg-white dark:bg-slate-900"
-                    >
-                      {alignedRows.map((row, idx) => {
-                        const hasLeftNumber = row.left.lineNum !== undefined;
-                        const isPureDel = !row.left.isSpacer && row.right.isSpacer;
-                        const isMod = !row.left.isSpacer && !row.right.isSpacer && row.isChanged;
-
-                        let gutterBg = "text-slate-400 dark:text-slate-500 font-normal";
-                        let rowBg = "hover:bg-slate-50/70 dark:hover:bg-slate-800/40";
-
-                        if (isPureDel) {
-                          gutterBg = "bg-[#fca5a5] text-[#7f1d1d] dark:bg-rose-700 dark:text-rose-100 font-semibold";
-                          rowBg = "bg-[#fca5a5]/80 text-[#4c0519] dark:bg-rose-900/60 dark:text-rose-100 font-medium";
-                        } else if (isMod) {
-                          gutterBg = "bg-[#fee2e2] text-[#991b1b] dark:bg-rose-950 dark:text-rose-300 font-semibold";
-                          rowBg = "bg-[#fee2e2]/60 dark:bg-rose-950/20";
-                        }
-
-                        return (
-                          <div
-                            key={idx}
-                            className={`flex items-center min-h-[24px] ${
-                              row.left.isSpacer ? "bg-transparent" : rowBg
-                            }`}
-                          >
-                            {/* Gutter Line Number */}
-                            <div
-                              className={`w-9 h-6 flex items-center justify-end pr-2 text-[11px] select-none shrink-0 border-r border-slate-200/80 dark:border-slate-800 ${
-                                row.left.isSpacer ? "" : gutterBg
-                              }`}
-                            >
-                              {hasLeftNumber ? row.left.lineNum : ""}
-                            </div>
-
-                            {/* Content or Diagonal Striped Spacer */}
-                            {row.left.isSpacer ? (
-                              <div className="flex-1 min-h-[24px] h-6 bg-[repeating-linear-gradient(-45deg,transparent,transparent_5px,rgba(203,213,225,0.4)_5px,rgba(203,213,225,0.4)_10px)] dark:bg-[repeating-linear-gradient(-45deg,transparent,transparent_5px,rgba(51,65,85,0.35)_5px,rgba(51,65,85,0.35)_10px)] select-none opacity-85" />
-                            ) : (
-                              <div className="flex-1 px-3 whitespace-pre select-text overflow-visible text-slate-900 dark:text-slate-100">
-                                {isPureDel
-                                  ? row.left.text
-                                  : renderSegments(row.left.segments, false, "left", isMod, row.left.text)}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Right Column: Modified */}
-                  <div className="flex flex-col h-full overflow-hidden">
-                    <div className="px-3 py-1.5 bg-slate-100/70 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider select-none">
-                      Đã sửa (Modified)
-                    </div>
-                    <div
-                      ref={rightScrollRef}
-                      onScroll={() => handleScroll("right")}
-                      className="flex-1 overflow-auto font-mono text-xs leading-6 py-1 bg-white dark:bg-slate-900"
-                    >
-                      {alignedRows.map((row, idx) => {
-                        const hasRightNumber = row.right.lineNum !== undefined;
-                        const isPureAdd = row.left.isSpacer && !row.right.isSpacer;
-                        const isMod = !row.left.isSpacer && !row.right.isSpacer && row.isChanged;
-
-                        let gutterBg = "text-slate-400 dark:text-slate-500 font-normal";
-                        let rowBg = "hover:bg-slate-50/70 dark:hover:bg-slate-800/40";
-
-                        if (isPureAdd) {
-                          gutterBg = "bg-[#5eead4] text-[#134e4a] dark:bg-teal-700 dark:text-teal-100 font-semibold";
-                          rowBg = "bg-[#5eead4]/80 text-[#042f2e] dark:bg-teal-900/60 dark:text-teal-100 font-medium";
-                        } else if (isMod) {
-                          gutterBg = "bg-[#ccfbf1] text-[#0f766e] dark:bg-teal-950 dark:text-teal-300 font-semibold";
-                          rowBg = "bg-[#ccfbf1]/50 dark:bg-teal-950/20";
-                        }
-
-                        return (
-                          <div
-                            key={idx}
-                            className={`flex items-center min-h-[24px] ${
-                              row.right.isSpacer ? "bg-transparent" : rowBg
-                            }`}
-                          >
-                            {/* Gutter Line Number */}
-                            <div
-                              className={`w-9 h-6 flex items-center justify-end pr-2 text-[11px] select-none shrink-0 border-r border-slate-200/80 dark:border-slate-800 ${
-                                row.right.isSpacer ? "" : gutterBg
-                              }`}
-                            >
-                              {hasRightNumber ? row.right.lineNum : ""}
-                            </div>
-
-                            {/* Content or Diagonal Striped Spacer */}
-                            {row.right.isSpacer ? (
-                              <div className="flex-1 min-h-[24px] h-6 bg-[repeating-linear-gradient(-45deg,transparent,transparent_5px,rgba(203,213,225,0.4)_5px,rgba(203,213,225,0.4)_10px)] dark:bg-[repeating-linear-gradient(-45deg,transparent,transparent_5px,rgba(51,65,85,0.35)_5px,rgba(51,65,85,0.35)_10px)] select-none opacity-85" />
-                            ) : (
-                              <div className="flex-1 px-3 whitespace-pre select-text overflow-visible text-slate-900 dark:text-slate-100">
-                                {isPureAdd
-                                  ? row.right.text
-                                  : renderSegments(row.right.segments, false, "right", isMod, row.right.text)}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Rightmost Overview Ruler (Minimap strip) */}
-                <div className="w-3.5 shrink-0 bg-slate-100/60 dark:bg-slate-850/60 border-l border-slate-200 dark:border-slate-800 flex flex-col py-1 select-none">
-                  {alignedRows.map((r, i) => {
-                    const isDel = r.isChanged && !r.left.isSpacer && r.right.isSpacer;
-                    const isAdd = r.isChanged && r.left.isSpacer && !r.right.isSpacer;
-                    const isMod = r.isChanged && !r.left.isSpacer && !r.right.isSpacer;
-
-                    return (
-                      <div
-                        key={i}
-                        className="w-full min-h-[3px] flex-1 flex"
-                      >
-                        {isMod ? (
-                          <>
-                            <div className="w-1/2 h-full bg-[#f87171]" />
-                            <div className="w-1/2 h-full bg-[#2dd4bf]" />
-                          </>
-                        ) : isDel ? (
-                          <div className="w-full h-full bg-[#f87171]" />
-                        ) : isAdd ? (
-                          <div className="w-full h-full bg-[#2dd4bf]" />
-                        ) : (
-                          <div className="w-full h-full bg-transparent" />
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
             ) : (
-              /* B. UNIFIED (TỔNG HỢP) VIEW */
-              <div className="flex-1 overflow-auto font-mono text-xs leading-6 py-1 bg-white dark:bg-slate-900">
-                {alignedRows.map((row, idx) => {
-                  if (!row.isChanged) {
-                    // Unchanged line
-                    return (
+              /* ACTIVE DIFF VIEW WITH VIRTUAL SCROLLING & CANVAS MINIMAP */
+              <div
+                ref={viewportContainerRef}
+                className="flex flex-1 overflow-hidden relative"
+              >
+                <div className="flex flex-col flex-1 overflow-hidden">
+                  {/* Split Column Headers */}
+                  {viewMode === "split" && (
+                    <div className="grid grid-cols-2 divide-x divide-slate-300/80 dark:divide-slate-800 shrink-0 border-b border-slate-200 dark:border-slate-800 select-none">
+                      <div className="px-3 py-1 bg-slate-100/70 dark:bg-slate-800/60 text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
+                        {language === "vi" ? "Gốc (Original)" : "Original"}
+                      </div>
+                      <div className="px-3 py-1 bg-slate-100/70 dark:bg-slate-800/60 text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
+                        {language === "vi" ? "Đã sửa (Modified)" : "Modified"}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Content Viewport */}
+                  {viewMode === "split" ? (
+                    /* A. SIDE-BY-SIDE SYNCHRONIZED SPLIT PANES */
+                    <div className="flex flex-1 h-full overflow-hidden divide-x divide-slate-300/80 dark:divide-slate-800">
+                      {/* Left Scroll Pane (Original) */}
                       <div
-                        key={idx}
-                        className="flex items-center min-h-[24px] hover:bg-slate-50/70 dark:hover:bg-slate-800/40"
+                        ref={leftScrollRef}
+                        onScroll={handleLeftScroll}
+                        onWheel={(e) => {
+                          if (rightScrollRef.current && e.deltaY) {
+                            rightScrollRef.current.scrollTop += e.deltaY;
+                          }
+                        }}
+                        className="flex-1 h-full overflow-x-auto overflow-y-hidden font-mono text-xs leading-6 bg-white dark:bg-slate-900 select-text"
                       >
-                        {/* Old Line # */}
-                        <div className="w-9 h-5 flex items-center justify-end pr-2 text-[11px] text-slate-400 dark:text-slate-500 select-none shrink-0">
-                          {row.left.lineNum}
-                        </div>
-                        {/* New Line # */}
-                        <div className="w-9 h-5 flex items-center justify-end pr-2 text-[11px] text-slate-400 dark:text-slate-500 select-none shrink-0 border-r border-slate-200 dark:border-slate-800">
-                          {row.right.lineNum}
-                        </div>
-                        {/* Indicator */}
-                        <div className="w-6 shrink-0 text-center text-slate-300 dark:text-slate-600 select-none">
-                          {" "}
-                        </div>
-                        {/* Content */}
-                        <div className="flex-1 px-2 whitespace-pre select-text overflow-visible text-slate-800 dark:text-slate-200">
-                          {row.left.text}
+                        <div style={{ minWidth: maxSplitCharCount > 0 ? `max(100%, ${maxSplitCharCount + 12}ch)` : "100%" }}>
+                          {/* Top Virtual Spacer */}
+                          <div style={{ height: topPadding }} />
+
+                          {/* Left Rows */}
+                          {visibleSplitRows.map((row, index) => {
+                            const idx = startIndex + index;
+                            const hasLeftNumber = row.left.lineNum !== undefined;
+                            const isPureDel = !row.left.isSpacer && row.right.isSpacer;
+                            const isMod = !row.left.isSpacer && !row.right.isSpacer && row.isChanged;
+
+                            let leftGutter = "text-slate-400 dark:text-slate-500 font-normal bg-slate-50/90 dark:bg-slate-850/90";
+                            let leftBg = "hover:bg-slate-50/70 dark:hover:bg-slate-800/40";
+                            if (isPureDel) {
+                              leftGutter = "bg-[#fca5a5] text-[#7f1d1d] dark:bg-rose-700 dark:text-rose-100 font-semibold";
+                              leftBg = "bg-[#fca5a5]/80 text-[#4c0519] dark:bg-rose-900/60 dark:text-rose-100 font-medium";
+                            } else if (isMod) {
+                              leftGutter = "bg-[#fee2e2] text-[#991b1b] dark:bg-rose-950 dark:text-rose-300 font-semibold";
+                              leftBg = "bg-[#fee2e2]/60 dark:bg-rose-950/20";
+                            }
+
+                            return (
+                              <div
+                                key={idx}
+                                className={`flex h-6 min-h-[24px] w-full ${row.left.isSpacer ? "bg-transparent" : leftBg}`}
+                              >
+                                {/* Sticky Line Number Gutter */}
+                                <div
+                                  className={`w-10 h-6 sticky left-0 z-10 flex items-center justify-end pr-2 text-[11px] select-none shrink-0 border-r border-slate-200/80 dark:border-slate-800 shadow-[1px_0_0_0_rgba(0,0,0,0.05)] dark:shadow-[1px_0_0_0_rgba(255,255,255,0.05)] ${
+                                    row.left.isSpacer ? "bg-white dark:bg-slate-900 text-transparent" : leftGutter
+                                  }`}
+                                >
+                                  {hasLeftNumber ? row.left.lineNum : ""}
+                                </div>
+
+                                {/* Code text or spacer */}
+                                {row.left.isSpacer ? (
+                                  <div className="flex-1 h-6 bg-[repeating-linear-gradient(-45deg,transparent,transparent_5px,rgba(203,213,225,0.4)_5px,rgba(203,213,225,0.4)_10px)] dark:bg-[repeating-linear-gradient(-45deg,transparent,transparent_5px,rgba(51,65,85,0.35)_5px,rgba(51,65,85,0.35)_10px)] select-none opacity-85" />
+                                ) : (
+                                  <div className="px-3 whitespace-pre text-slate-900 dark:text-slate-100 flex items-center h-6">
+                                    {isPureDel
+                                      ? row.left.text
+                                      : renderSegments(row.left.segments, false, "left", isMod, row.left.text)}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+
+                          {/* Bottom Virtual Spacer */}
+                          <div style={{ height: bottomPadding }} />
                         </div>
                       </div>
-                    );
-                  }
 
-                  // Changed line: show left (deletion/modification) and/or right (addition/modification)
-                  return (
-                    <React.Fragment key={idx}>
-                      {/* Deleted / Old Line */}
-                      {!row.left.isSpacer && (
-                        <div className="flex items-center min-h-[24px] bg-[#fee2e2]/60 dark:bg-rose-950/20 hover:bg-[#fee2e2]/80 dark:hover:bg-rose-950/30 transition-colors">
-                          <div className="w-9 h-5 flex items-center justify-end pr-2 text-[11px] bg-[#fee2e2] text-[#991b1b] dark:bg-rose-900/40 dark:text-rose-300 font-semibold select-none shrink-0">
-                            {row.left.lineNum}
-                          </div>
-                          <div className="w-9 h-5 flex items-center justify-end pr-2 text-[11px] text-slate-400 dark:text-slate-600 select-none shrink-0 border-r border-rose-200 dark:border-rose-900/40">
-                            {""}
-                          </div>
-                          <div className="w-6 shrink-0 text-center text-rose-600 dark:text-rose-400 font-bold select-none">
-                            -
-                          </div>
-                          <div className="flex-1 px-2 whitespace-pre select-text overflow-visible text-[#991b1b] dark:text-rose-100">
-                            {renderSegments(row.left.segments, false, "left", true, row.left.text)}
-                          </div>
-                        </div>
-                      )}
+                      {/* Right Scroll Pane (Modified) */}
+                      <div
+                        ref={rightScrollRef}
+                        onScroll={handleRightScroll}
+                        className="flex-1 h-full overflow-x-auto overflow-y-auto font-mono text-xs leading-6 bg-white dark:bg-slate-900 select-text"
+                      >
+                        <div style={{ minWidth: maxSplitCharCount > 0 ? `max(100%, ${maxSplitCharCount + 12}ch)` : "100%" }}>
+                          {/* Top Virtual Spacer */}
+                          <div style={{ height: topPadding }} />
 
-                      {/* Added / New Line */}
-                      {!row.right.isSpacer && (
-                        <div className="flex items-center min-h-[24px] bg-[#ccfbf1]/50 dark:bg-teal-950/20 hover:bg-[#ccfbf1]/70 dark:hover:bg-teal-950/30 transition-colors">
-                          <div className="w-9 h-5 flex items-center justify-end pr-2 text-[11px] text-slate-400 dark:text-slate-600 select-none shrink-0">
-                            {""}
-                          </div>
-                          <div className="w-9 h-5 flex items-center justify-end pr-2 text-[11px] bg-[#ccfbf1] text-[#0f766e] dark:bg-teal-900/40 dark:text-teal-300 font-semibold select-none shrink-0 border-r border-teal-200 dark:border-teal-900/40">
-                            {row.right.lineNum}
-                          </div>
-                          <div className="w-6 shrink-0 text-center text-teal-600 dark:text-teal-400 font-bold select-none">
-                            +
-                          </div>
-                          <div className="flex-1 px-2 whitespace-pre select-text overflow-visible text-[#0f766e] dark:text-teal-100">
-                            {renderSegments(row.right.segments, false, "right", true, row.right.text)}
-                          </div>
+                          {/* Right Rows */}
+                          {visibleSplitRows.map((row, index) => {
+                            const idx = startIndex + index;
+                            const hasRightNumber = row.right.lineNum !== undefined;
+                            const isPureAdd = row.left.isSpacer && !row.right.isSpacer;
+                            const isMod = !row.left.isSpacer && !row.right.isSpacer && row.isChanged;
+
+                            let rightGutter = "text-slate-400 dark:text-slate-500 font-normal bg-slate-50/90 dark:bg-slate-850/90";
+                            let rightBg = "hover:bg-slate-50/70 dark:hover:bg-slate-800/40";
+                            if (isPureAdd) {
+                              rightGutter = "bg-[#5eead4] text-[#134e4a] dark:bg-teal-700 dark:text-teal-100 font-semibold";
+                              rightBg = "bg-[#5eead4]/80 text-[#042f2e] dark:bg-teal-900/60 dark:text-teal-100 font-medium";
+                            } else if (isMod) {
+                              rightGutter = "bg-[#ccfbf1] text-[#0f766e] dark:bg-teal-950 dark:text-teal-300 font-semibold";
+                              rightBg = "bg-[#ccfbf1]/50 dark:bg-teal-950/20";
+                            }
+
+                            return (
+                              <div
+                                key={idx}
+                                className={`flex h-6 min-h-[24px] w-full ${row.right.isSpacer ? "bg-transparent" : rightBg}`}
+                              >
+                                {/* Sticky Line Number Gutter */}
+                                <div
+                                  className={`w-10 h-6 sticky left-0 z-10 flex items-center justify-end pr-2 text-[11px] select-none shrink-0 border-r border-slate-200/80 dark:border-slate-800 shadow-[1px_0_0_0_rgba(0,0,0,0.05)] dark:shadow-[1px_0_0_0_rgba(255,255,255,0.05)] ${
+                                    row.right.isSpacer ? "bg-white dark:bg-slate-900 text-transparent" : rightGutter
+                                  }`}
+                                >
+                                  {hasRightNumber ? row.right.lineNum : ""}
+                                </div>
+
+                                {/* Code text or spacer */}
+                                {row.right.isSpacer ? (
+                                  <div className="flex-1 h-6 bg-[repeating-linear-gradient(-45deg,transparent,transparent_5px,rgba(203,213,225,0.4)_5px,rgba(203,213,225,0.4)_10px)] dark:bg-[repeating-linear-gradient(-45deg,transparent,transparent_5px,rgba(51,65,85,0.35)_5px,rgba(51,65,85,0.35)_10px)] select-none opacity-85" />
+                                ) : (
+                                  <div className="px-3 whitespace-pre text-slate-900 dark:text-slate-100 flex items-center h-6">
+                                    {isPureAdd
+                                      ? row.right.text
+                                      : renderSegments(row.right.segments, false, "right", isMod, row.right.text)}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+
+                          {/* Bottom Virtual Spacer */}
+                          <div style={{ height: bottomPadding }} />
                         </div>
-                      )}
-                    </React.Fragment>
-                  );
-                })}
+                      </div>
+                    </div>
+                  ) : (
+                    /* B. UNIFIED VIRTUAL ROWS */
+                    <div
+                      ref={unifiedScrollRef}
+                      onScroll={handleUnifiedScroll}
+                      className="flex-1 h-full overflow-x-auto overflow-y-auto font-mono text-xs leading-6 bg-white dark:bg-slate-900 select-text"
+                    >
+                      <div style={{ minWidth: maxUnifiedCharCount > 0 ? `max(100%, ${maxUnifiedCharCount + 20}ch)` : "100%" }}>
+                        {/* Top Virtual Spacer */}
+                        <div style={{ height: topPadding }} />
+
+                        {/* Unified Rows */}
+                        {visibleUnifiedLines.map((line, index) => {
+                          const idx = startIndex + index;
+                          const isDel = line.type === "delete";
+                          const isAdd = line.type === "insert";
+
+                          let rowBg = "hover:bg-slate-50/70 dark:hover:bg-slate-800/40";
+                          let leftGutterBg = "bg-slate-50/90 dark:bg-slate-850/90 text-slate-400 dark:text-slate-500";
+                          let rightGutterBg = "bg-slate-50/90 dark:bg-slate-850/90 text-slate-400 dark:text-slate-500 border-r border-slate-200 dark:border-slate-800";
+                          let markerBg = "bg-slate-50/90 dark:bg-slate-850/90 text-slate-300 dark:text-slate-600";
+                          let textColor = "text-slate-800 dark:text-slate-200";
+
+                          if (isDel) {
+                            rowBg = "bg-[#fee2e2]/60 dark:bg-rose-950/20 hover:bg-[#fee2e2]/80 dark:hover:bg-rose-950/30 transition-colors";
+                            leftGutterBg = "bg-[#fee2e2] text-[#991b1b] dark:bg-rose-900/40 dark:text-rose-300 font-semibold";
+                            rightGutterBg = "bg-[#fee2e2] text-slate-400 dark:text-slate-600 border-r border-rose-200 dark:border-rose-900/40";
+                            markerBg = "bg-[#fee2e2] text-rose-600 dark:text-rose-400 font-bold";
+                            textColor = "text-[#991b1b] dark:text-rose-100";
+                          } else if (isAdd) {
+                            rowBg = "bg-[#ccfbf1]/50 dark:bg-teal-950/20 hover:bg-[#ccfbf1]/70 dark:hover:bg-teal-950/30 transition-colors";
+                            leftGutterBg = "bg-[#ccfbf1] text-slate-400 dark:text-slate-600";
+                            rightGutterBg = "bg-[#ccfbf1] text-[#0f766e] dark:bg-teal-900/40 dark:text-teal-300 font-semibold border-r border-teal-200 dark:border-teal-900/40";
+                            markerBg = "bg-[#ccfbf1] text-teal-600 dark:text-teal-400 font-bold";
+                            textColor = "text-[#0f766e] dark:text-teal-100";
+                          }
+
+                          return (
+                            <div
+                              key={idx}
+                              className={`flex items-center h-6 min-h-[24px] w-full ${rowBg}`}
+                            >
+                              {/* Sticky Left Line Number */}
+                              <div
+                                className={`w-10 h-6 sticky left-0 z-10 flex items-center justify-end pr-2 text-[11px] select-none shrink-0 ${leftGutterBg}`}
+                              >
+                                {line.leftLineNum ?? ""}
+                              </div>
+
+                              {/* Sticky Right Line Number */}
+                              <div
+                                className={`w-10 h-6 sticky left-10 z-10 flex items-center justify-end pr-2 text-[11px] select-none shrink-0 ${rightGutterBg}`}
+                              >
+                                {line.rightLineNum ?? ""}
+                              </div>
+
+                              {/* Sticky Marker (+ / -) */}
+                              <div
+                                className={`w-6 h-6 sticky left-20 z-10 flex items-center justify-center text-xs select-none shrink-0 border-r border-slate-200/40 dark:border-slate-800/40 ${markerBg}`}
+                              >
+                                {isDel ? "-" : isAdd ? "+" : " "}
+                              </div>
+
+                              {/* Text content */}
+                              <div className={`px-3 whitespace-pre flex items-center h-6 ${textColor}`}>
+                                {isDel || isAdd
+                                  ? renderSegments(line.segments, false, isDel ? "left" : "right", true, line.text)
+                                  : line.text}
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {/* Bottom Virtual Spacer */}
+                        <div style={{ height: bottomPadding }} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Rightmost High-Performance Canvas Minimap (Overview Ruler) */}
+                <div className="w-3.5 shrink-0 bg-slate-100/60 dark:bg-slate-850/60 border-l border-slate-200 dark:border-slate-800 flex select-none relative">
+                  <canvas
+                    ref={canvasRef}
+                    width={14}
+                    height={viewportHeight}
+                    onClick={handleMinimapClick}
+                    className="w-full h-full cursor-pointer"
+                    title={language === "vi" ? "Bấm vào minimap để cuộn nhanh đến vị trí" : "Click minimap to jump"}
+                  />
+                </div>
               </div>
             )}
           </div>
@@ -869,6 +907,3 @@ export const TextDiffComparer: React.FC = () => {
     />
   );
 };
-
-
-

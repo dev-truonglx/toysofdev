@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Regex } from "lucide-react";
+import React, { useState, useMemo, useEffect } from "react";
+import { Regex, Copy, Check } from "lucide-react";
 import { ToolLayout } from "../../components/common/ToolLayout";
 import { useTranslation } from "../../i18n";
 
@@ -7,6 +7,7 @@ interface MatchItem {
   index: number;
   match: string;
   groups: string[];
+  namedGroups?: Record<string, string>;
 }
 
 export const RegexTester: React.FC = () => {
@@ -22,54 +23,104 @@ export const RegexTester: React.FC = () => {
   const [text, setText] = useState(
     "Contact us at support@example.com or sales-team@devtoys.app for queries. Invalid: test@.com",
   );
-  const [error, setError] = useState<string | null>(null);
+
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+
+  // Debounced pattern & text to avoid freezing UI while typing
+  const [debouncedPattern, setDebouncedPattern] = useState(pattern);
+  const [debouncedText, setDebouncedText] = useState(text);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedPattern(pattern);
+      setDebouncedText(text);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [pattern, text]);
 
   const presets = [
     { label: "Email Address", pattern: "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}" },
-    { label: "URL", pattern: "https?:\\/\\/(www\\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b([-a-zA-Z0-9()@:%_+.~#?&//=]*)" },
-    { label: "IPv4 Address", pattern: "\\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\b" },
+    {
+      label: "URL",
+      pattern:
+        "https?:\\/\\/(www\\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b([-a-zA-Z0-9()@:%_+.~#?&//=]*)",
+    },
+    {
+      label: "IPv4 Address",
+      pattern:
+        "\\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\b",
+    },
     { label: "HEX Color", pattern: "#?([a-fA-F0-9]{6}|[a-fA-F0-9]{3})" },
-    { label: "UUID", pattern: "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}" },
+    {
+      label: "UUID",
+      pattern: "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
+    },
   ];
 
-  let matches: MatchItem[] = [];
+  const { matches, error }: { matches: MatchItem[]; error: string | null } = useMemo(() => {
+    const list: MatchItem[] = [];
+    if (!debouncedPattern) return { matches: list, error: null };
 
-  try {
-    let flags = "";
-    if (flagGlobal) flags += "g";
-    if (flagIgnoreCase) flags += "i";
-    if (flagMultiline) flags += "m";
-    if (flagDotAll) flags += "s";
+    const startTime = performance.now();
 
-    if (pattern) {
-      const reg = new RegExp(pattern, flags);
+    try {
+      let flags = "";
+      if (flagGlobal) flags += "g";
+      if (flagIgnoreCase) flags += "i";
+      if (flagMultiline) flags += "m";
+      if (flagDotAll) flags += "s";
+
+      const reg = new RegExp(debouncedPattern, flags);
       if (flagGlobal) {
         let m: RegExpExecArray | null;
         let count = 0;
-        while ((m = reg.exec(text)) !== null && count < 500) {
-          matches.push({
+        while ((m = reg.exec(debouncedText)) !== null && count < 500) {
+          // ReDoS protection: stop if regex takes > 250ms
+          if (performance.now() - startTime > 250) {
+            throw new Error(
+              "Regex execution timeout (> 250ms). The expression may be too complex or causing catastrophic backtracking (ReDoS).",
+            );
+          }
+
+          list.push({
             index: m.index,
             match: m[0],
             groups: m.slice(1),
+            namedGroups: m.groups ? { ...m.groups } : undefined,
           });
           count++;
-          if (m.index === reg.lastIndex) reg.lastIndex++;
+
+          // Safe handling for zero-length matches (e.g. ^, \b, a*)
+          if (m[0].length === 0) {
+            if (reg.lastIndex >= debouncedText.length) break;
+            reg.lastIndex++;
+          }
         }
       } else {
-        const m = reg.exec(text);
+        const m = reg.exec(debouncedText);
         if (m) {
-          matches.push({
+          list.push({
             index: m.index,
             match: m[0],
             groups: m.slice(1),
+            namedGroups: m.groups ? { ...m.groups } : undefined,
           });
         }
       }
+      return { matches: list, error: null };
+    } catch (err: unknown) {
+      return {
+        matches: list,
+        error: err instanceof Error ? err.message : "Invalid Regex pattern",
+      };
     }
-    if (error) setError(null);
-  } catch (err: unknown) {
-    if (!error) setError(err instanceof Error ? err.message : "Invalid Regex pattern");
-  }
+  }, [debouncedPattern, debouncedText, flagGlobal, flagIgnoreCase, flagMultiline, flagDotAll]);
+
+  const copyMatch = (val: string, idx: number) => {
+    navigator.clipboard.writeText(val);
+    setCopiedIdx(idx);
+    setTimeout(() => setCopiedIdx(null), 1500);
+  };
 
   const config = (
     <>
@@ -130,10 +181,13 @@ export const RegexTester: React.FC = () => {
   return (
     <ToolLayout
       id="regex-tester"
-      title="Regular Expression (Regex) Tester"
-      description="Test, debug and validate regular expressions against text in real-time"
+      title={t.tools["regex-tester"]?.title || "Regular Expression (Regex) Tester"}
+      description={
+        t.tools["regex-tester"]?.description ||
+        "Test, debug and validate regular expressions against text in real-time"
+      }
       icon={Regex}
-      categoryName="Graphic & Testing"
+      categoryName={t.categories["graphic"]?.title || "Graphic & Testing"}
       configuration={config}
       error={error}
       customPanes={
@@ -151,7 +205,10 @@ export const RegexTester: React.FC = () => {
             />
             <span className="font-mono font-bold text-slate-400 text-base">/</span>
             <span className="font-mono text-xs text-indigo-600 dark:text-indigo-400 font-bold">
-              {flagGlobal ? "g" : ""}{flagIgnoreCase ? "i" : ""}{flagMultiline ? "m" : ""}{flagDotAll ? "s" : ""}
+              {flagGlobal ? "g" : ""}
+              {flagIgnoreCase ? "i" : ""}
+              {flagMultiline ? "m" : ""}
+              {flagDotAll ? "s" : ""}
             </span>
           </div>
 
@@ -188,20 +245,41 @@ export const RegexTester: React.FC = () => {
                   matches.map((m, idx) => (
                     <div
                       key={idx}
-                      className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800/80 space-y-1"
+                      className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800/80 space-y-1.5"
                     >
                       <div className="flex items-center justify-between text-[11px]">
                         <span className="font-bold text-indigo-600 dark:text-indigo-400">
                           Match #{idx + 1}
                         </span>
-                        <span className="text-slate-400">Index: {m.index}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-400">Index: {m.index}</span>
+                          <button
+                            onClick={() => copyMatch(m.match, idx)}
+                            className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
+                            title="Copy match"
+                          >
+                            {copiedIdx === idx ? (
+                              <Check className="w-3.5 h-3.5 text-emerald-500" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
                       </div>
                       <div className="p-1.5 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 font-semibold break-all">
                         {m.match}
                       </div>
                       {m.groups.length > 0 && (
-                        <div className="pt-1 text-[11px] text-slate-500">
+                        <div className="pt-0.5 text-[11px] text-slate-500">
                           Groups: {m.groups.map((g, gIdx) => `$${gIdx + 1}: "${g}"`).join(", ")}
+                        </div>
+                      )}
+                      {m.namedGroups && Object.keys(m.namedGroups).length > 0 && (
+                        <div className="pt-0.5 text-[11px] text-indigo-600 dark:text-indigo-400 font-medium">
+                          Named:{" "}
+                          {Object.entries(m.namedGroups)
+                            .map(([k, v]) => `${k}: "${v}"`)
+                            .join(", ")}
                         </div>
                       )}
                     </div>

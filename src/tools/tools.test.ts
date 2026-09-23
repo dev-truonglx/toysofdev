@@ -3,14 +3,19 @@ import YAML from "yaml";
 import { md5 } from "./hash-generator/md5";
 import { TOOLS, CATEGORIES } from "./index";
 
+import { encodeUtf8Base64, decodeUtf8Base64 } from "./base64-converter/base64Utils";
+import { filterLogLines } from "./log-grep/logFilterEngine";
+import { LOG_PRESETS } from "./log-grep/presets";
+
 describe("Tool Logic Tests", () => {
-  it("verifies that all 31 DevToys tools are registered", () => {
-    expect(TOOLS.length).toBe(31);
+  it("verifies that all 32 DevToys tools are registered", () => {
+    expect(TOOLS.length).toBe(32);
     expect(CATEGORIES.length).toBe(6);
 
     const ids = new Set(TOOLS.map((t) => t.id));
-    expect(ids.size).toBe(31); // All IDs must be unique
+    expect(ids.size).toBe(32); // All IDs must be unique
     expect(ids.has("file-folder-diff")).toBe(true);
+    expect(ids.has("log-grep")).toBe(true);
   });
 
   describe("MD5 Generator", () => {
@@ -28,35 +33,6 @@ describe("Tool Logic Tests", () => {
   });
 
   describe("Base64 UTF-8 Safe Encoding & Decoding", () => {
-    function encodeUtf8Base64(str: string, urlSafe = false): string {
-      const bytes = new TextEncoder().encode(str);
-      let binString = "";
-      for (let i = 0; i < bytes.length; i++) {
-        binString += String.fromCharCode(bytes[i]);
-      }
-      let res = btoa(binString);
-      if (urlSafe) {
-        res = res.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-      }
-      return res;
-    }
-
-    function decodeUtf8Base64(input: string, urlSafe = false): string {
-      let str = input.trim();
-      if (urlSafe || str.includes("-") || str.includes("_")) {
-        str = str.replace(/-/g, "+").replace(/_/g, "/");
-        while (str.length % 4) {
-          str += "=";
-        }
-      }
-      const binString = atob(str);
-      const bytes = new Uint8Array(binString.length);
-      for (let i = 0; i < binString.length; i++) {
-        bytes[i] = binString.charCodeAt(i);
-      }
-      return new TextDecoder().decode(bytes);
-    }
-
     it("encodes and decodes standard ASCII string", () => {
       const text = "Hello World!";
       const encoded = encodeUtf8Base64(text);
@@ -73,11 +49,71 @@ describe("Tool Logic Tests", () => {
 
     it("supports URL-safe Base64 without + or / or trailing =", () => {
       const text = "subjects?query=test&value=123+456";
-      const urlSafeEncoded = encodeUtf8Base64(text, true);
+      const urlSafeEncoded = encodeUtf8Base64(text, { urlSafe: true });
       expect(urlSafeEncoded).not.toContain("+");
       expect(urlSafeEncoded).not.toContain("/");
       expect(urlSafeEncoded).not.toContain("=");
-      expect(decodeUtf8Base64(urlSafeEncoded, true)).toBe(text);
+      expect(decodeUtf8Base64(urlSafeEncoded, { urlSafe: true })).toBe(text);
+    });
+
+    it("handles whitespace and linebreaks in Base64 (PEM/MIME format)", () => {
+      const text = "A".repeat(100);
+      const encoded = encodeUtf8Base64(text);
+      // Split encoded with newlines every 20 characters
+      const wrapped = encoded.match(/.{1,20}/g)?.join("\r\n") || encoded;
+      expect(decodeUtf8Base64(wrapped)).toBe(text);
+    });
+
+    it("efficiently encodes and decodes large payload exceeding call stack limit (>65k bytes)", () => {
+      const largeText = "Hello World Chunking Test 🚀\n".repeat(3000); // ~90KB
+      const t0 = performance.now();
+      const encoded = encodeUtf8Base64(largeText);
+      const decoded = decodeUtf8Base64(encoded);
+      const elapsed = performance.now() - t0;
+
+      expect(decoded).toBe(largeText);
+      expect(elapsed).toBeLessThan(100); // should process in < 100ms
+    });
+  });
+
+  describe("Regex Tester Logic", () => {
+    it("extracts matches and capture groups with global flag", () => {
+      const pattern = "(\\w+)@([\\w.]+)";
+      const text = "admin@example.com, test@dev.local";
+      const reg = new RegExp(pattern, "g");
+      const matches: { match: string; groups: string[] }[] = [];
+      let m: RegExpExecArray | null;
+      while ((m = reg.exec(text)) !== null) {
+        matches.push({ match: m[0], groups: m.slice(1) });
+      }
+      expect(matches.length).toBe(2);
+      expect(matches[0].match).toBe("admin@example.com");
+      expect(matches[0].groups).toEqual(["admin", "example.com"]);
+    });
+
+    it("safely handles zero-length regex matches without infinite loops", () => {
+      const reg = new RegExp("\\b", "g");
+      const text = "hi";
+      let count = 0;
+      let m: RegExpExecArray | null;
+      while ((m = reg.exec(text)) !== null && count < 10) {
+        count++;
+        if (m[0].length === 0) {
+          if (reg.lastIndex >= text.length) break;
+          reg.lastIndex++;
+        }
+      }
+      expect(count).toBeGreaterThan(0);
+      expect(count).toBeLessThan(10);
+    });
+
+    it("captures named groups (?<name>...)", () => {
+      const pattern = "(?<area>\\d{3})-(?<phone>\\d{3}-\\d{4})";
+      const text = "Call 123-456-7890 today";
+      const reg = new RegExp(pattern);
+      const m = reg.exec(text);
+      expect(m).not.toBeNull();
+      expect(m?.groups).toEqual({ area: "123", phone: "456-7890" });
     });
   });
 
@@ -339,6 +375,122 @@ describe("Tool Logic Tests", () => {
       diffKeys.forEach((key) => {
         expect(en.diff[key]).toBeTruthy();
         expect(vi.diff[key]).toBeTruthy();
+      });
+    });
+  });
+
+  describe("Log Grep & Filter Engine", () => {
+    const sampleLogs = [
+      "2026-09-22 10:00:00 [INFO] Starting service",
+      "2026-09-22 10:00:01 [WARN] Cache miss for user_id=12",
+      "2026-09-22 10:00:02 [ERROR] Database connection failed",
+      "java.sql.SQLException: Connection refused",
+      "    at com.example.db.Pool.getConnection(Pool.java:45)",
+      "2026-09-22 10:00:05 [INFO] Health check GET /healthz 200 OK",
+    ].join("\n");
+
+    it("filters lines with literal string search", () => {
+      const result = filterLogLines(sampleLogs, {
+        pattern: "Database",
+        isRegex: false,
+        matchCase: false,
+        wholeWord: false,
+        invertMatch: false,
+        contextLines: 0,
+      });
+
+      expect(result.matchedCount).toBe(1);
+      expect(result.lines.length).toBe(1);
+      expect(result.lines[0].lineNumber).toBe(3);
+      expect(result.lines[0].content).toContain("Database connection failed");
+      expect(result.lines[0].highlights.length).toBe(1);
+    });
+
+    it("filters lines with regex pattern", () => {
+      const result = filterLogLines(sampleLogs, {
+        pattern: "\\[(ERROR|WARN)\\]",
+        isRegex: true,
+        matchCase: true,
+        wholeWord: false,
+        invertMatch: false,
+        contextLines: 0,
+      });
+
+      expect(result.matchedCount).toBe(2);
+      expect(result.lines.map((l) => l.lineNumber)).toEqual([2, 3]);
+    });
+
+    it("supports invert match (grep -v)", () => {
+      const result = filterLogLines(sampleLogs, {
+        pattern: "healthz",
+        isRegex: false,
+        matchCase: false,
+        wholeWord: false,
+        invertMatch: true,
+        contextLines: 0,
+      });
+
+      expect(result.matchedCount).toBe(5);
+      expect(result.lines.some((l) => l.content.includes("healthz"))).toBe(false);
+    });
+
+    it("supports context lines before and after match (grep -C)", () => {
+      const result = filterLogLines(sampleLogs, {
+        pattern: "Database",
+        isRegex: false,
+        matchCase: false,
+        wholeWord: false,
+        invertMatch: false,
+        contextLines: 1,
+      });
+
+      // Match is line 3, with context 1 line before (line 2) and 1 line after (line 4)
+      expect(result.matchedCount).toBe(1);
+      expect(result.lines.length).toBe(3);
+      expect(result.lines.map((l) => l.lineNumber)).toEqual([2, 3, 4]);
+      expect(result.lines[0].isContext).toBe(true);
+      expect(result.lines[1].isMatch).toBe(true);
+      expect(result.lines[2].isContext).toBe(true);
+    });
+
+    it("strictly maintains symmetric context line count before and after matching line", () => {
+      const logs = Array.from(
+        { length: 50 },
+        (_, i) => `Line ${i + 1}: ${i + 1 === 25 ? "TARGET_MATCH" : "normal log"}`,
+      ).join("\n");
+
+      [1, 5, 10, 15].forEach((ctx) => {
+        const result = filterLogLines(logs, {
+          pattern: "TARGET_MATCH",
+          isRegex: false,
+          matchCase: false,
+          wholeWord: false,
+          invertMatch: false,
+          contextLines: ctx,
+        });
+
+        expect(result.matchedCount).toBe(1);
+        // Total lines should be ctx before + 1 match + ctx after = 2 * ctx + 1
+        expect(result.lines.length).toBe(ctx * 2 + 1);
+
+        const matchIndexInResult = result.lines.findIndex((l) => l.isMatch);
+        expect(matchIndexInResult).toBe(ctx); // exactly ctx lines before
+
+        const linesAfterCount = result.lines.length - 1 - matchIndexInResult;
+        expect(linesAfterCount).toBe(ctx); // exactly ctx lines after
+
+        // Verify line numbers
+        expect(result.lines[0].lineNumber).toBe(25 - ctx);
+        expect(result.lines[result.lines.length - 1].lineNumber).toBe(25 + ctx);
+      });
+    });
+
+    it("verifies all log regex presets are syntactically valid", () => {
+      expect(LOG_PRESETS.length).toBeGreaterThan(10);
+      LOG_PRESETS.forEach((preset) => {
+        expect(() => new RegExp(preset.pattern, "g")).not.toThrow();
+        expect(preset.label).toBeTruthy();
+        expect(preset.description).toBeTruthy();
       });
     });
   });

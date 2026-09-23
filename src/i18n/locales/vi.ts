@@ -30,6 +30,8 @@ export const vi: TranslationSchema = {
     updateDownloadedTitle: "Đã cập nhật xong!",
     updateRestartNow: "Khởi động lại",
     updateDismiss: "Bỏ qua",
+    collapseSidebar: "Thu gọn thanh bên",
+    expandSidebar: "Mở rộng thanh bên",
   },
   theme: {
     system: "Giao diện hệ thống",
@@ -196,6 +198,10 @@ export const vi: TranslationSchema = {
     "jsonpath-tester": {
       title: "Kiểm Thử Truy Vấn JSONPath",
       description: "Truy vấn và trích xuất dữ liệu từ tài liệu JSON bằng biểu thức JSONPath",
+    },
+    "log-grep": {
+      title: "Trích Xuất & Lọc Log (Log Grep)",
+      description: "Lọc, trích xuất và phân tích các dòng log bằng chuỗi văn bản hoặc Regex kèm dòng ngữ cảnh và mẫu có sẵn",
     },
   },
   toolLayout: {
@@ -374,5 +380,9 @@ export const vi: TranslationSchema = {
     deletedFilter: "Xóa",
     noData: "Chưa có nội dung để so sánh",
     dragDropPrompt: "Kéo thả tệp tin vào đây hoặc bấm để duyệt",
+    fastDiffActive: "Đã tối ưu tốc độ: Tự động tắt tô màu từng từ cho văn bản lớn (> 10.000 dòng)",
+    largeFileWarning: "Văn bản lớn (> 50.000 dòng). Đang tối ưu hóa tốc độ xử lý.",
+    truncatedWarning: "Văn bản vượt ngưỡng an toàn (100.000 dòng). Đã so sánh 50.000 dòng đầu để bảo vệ bộ nhớ.",
+    compareAllAnyway: "So sánh toàn bộ",
   },
 };

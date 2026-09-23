@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Binary, ArrowLeftRight } from "lucide-react";
 import { ToolLayout } from "../../components/common/ToolLayout";
 import { useTranslation } from "../../i18n";
+import { encodeUtf8Base64, decodeUtf8Base64 } from "./base64Utils";
 
 type ConversionMode = "encode" | "decode";
 
@@ -20,40 +21,34 @@ export const Base64Converter: React.FC = () => {
       return;
     }
 
-    try {
-      if (mode === "encode") {
-        const bytes = new TextEncoder().encode(input);
-        let binString = "";
-        for (let i = 0; i < bytes.length; i++) {
-          binString += String.fromCharCode(bytes[i]);
-        }
-        let res = btoa(binString);
-        if (urlSafe) {
-          res = res.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-        }
-        setOutput(res);
-        setError(null);
-      } else {
-        let str = input.trim();
-        if (urlSafe || str.includes("-") || str.includes("_")) {
-          str = str.replace(/-/g, "+").replace(/_/g, "/");
-          while (str.length % 4) {
-            str += "=";
+    let isCurrent = true;
+    const timer = setTimeout(() => {
+      try {
+        if (mode === "encode") {
+          const res = encodeUtf8Base64(input, { urlSafe });
+          if (isCurrent) {
+            setOutput(res);
+            setError(null);
+          }
+        } else {
+          const decoded = decodeUtf8Base64(input, { urlSafe });
+          if (isCurrent) {
+            setOutput(decoded);
+            setError(null);
           }
         }
-        const binString = atob(str);
-        const bytes = new Uint8Array(binString.length);
-        for (let i = 0; i < binString.length; i++) {
-          bytes[i] = binString.charCodeAt(i);
+      } catch (err: unknown) {
+        if (isCurrent) {
+          setError(err instanceof Error ? err.message : "Failed to convert Base64");
+          setOutput("");
         }
-        const decoded = new TextDecoder().decode(bytes);
-        setOutput(decoded);
-        setError(null);
       }
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to convert Base64");
-      setOutput("");
-    }
+    }, 60);
+
+    return () => {
+      isCurrent = false;
+      clearTimeout(timer);
+    };
   }, [input, mode, urlSafe]);
 
   const handleSwap = () => {
@@ -111,15 +106,18 @@ export const Base64Converter: React.FC = () => {
   return (
     <ToolLayout
       id="base64-converter"
-      title="Base64 Text Encoder / Decoder"
-      description="Encode and decode text data to and from Base64 format with full UTF-8 support"
+      title={t.tools["base64-converter"]?.title || "Base64 Text Encoder / Decoder"}
+      description={
+        t.tools["base64-converter"]?.description ||
+        "Encode and decode text data to and from Base64 format with full UTF-8 support"
+      }
       icon={Binary}
-      categoryName="Encoders / Decoders"
+      categoryName={t.categories["encoders-decoders"]?.title || "Encoders / Decoders"}
       configuration={config}
-      inputLabel={mode === "encode" ? "Raw Text" : "Base64"}
+      inputLabel={mode === "encode" ? t.toolLayout?.input || "Raw Text" : "Base64"}
       inputValue={input}
       onInputChange={setInput}
-      outputLabel={mode === "encode" ? "Base64" : "Decoded Text"}
+      outputLabel={mode === "encode" ? "Base64" : t.toolLayout?.output || "Decoded Text"}
       outputValue={output}
       error={error}
     />

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   FolderSync,
   Folder,
@@ -16,41 +16,34 @@ import {
   SlidersHorizontal,
   Trash2,
   FileDiff,
+  Binary,
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
 } from "lucide-react";
 import { ToolLayout } from "../../components/common/ToolLayout";
 import { useTranslation } from "../../i18n";
+import {
+  computeDiff,
+  computeJsDiff,
+  AlignedRow,
+  DiffSegment,
+  DiffOptions,
+  splitLines,
+  isBinaryFileName,
+  isBinaryBuffer,
+} from "../text-diff/diffEngine";
 
-// -------------------------------------------------------------
-// Type Definitions
-// -------------------------------------------------------------
-export interface DiffSegment {
-  text: string;
-  isDiff: boolean;
-}
-
-export interface AlignedRow {
-  isChanged: boolean;
-  type: "MOD" | "ADD" | "DEL" | "SAME";
-  left: {
-    lineNum?: number;
-    text: string;
-    segments: DiffSegment[];
-    isSpacer: boolean;
-  };
-  right: {
-    lineNum?: number;
-    text: string;
-    segments: DiffSegment[];
-    isSpacer: boolean;
-  };
-}
+const ROW_HEIGHT = 24; // Fixed 24px height per row
+const OVERSCAN = 15; // Extra rows rendered above and below viewport
 
 export interface FileItem {
   name: string;
   path: string;
   size: number;
-  lineCount: number;
-  content: string;
+  lineCount?: number;
+  content?: string; // Loaded lazily on demand
+  isBinary?: boolean;
   rawFile?: File;
 }
 
@@ -59,288 +52,40 @@ export interface FolderComparisonItem {
   status: "added" | "deleted" | "modified" | "unchanged";
   fileA?: FileItem;
   fileB?: FileItem;
+  isBinary?: boolean;
 }
 
-export interface DiffOptions {
-  ignoreWhitespace: boolean;
-  ignoreCase: boolean;
+interface UnifiedLine {
+  type: "equal" | "delete" | "insert";
+  leftLineNum?: number;
+  rightLineNum?: number;
+  text: string;
+  segments: DiffSegment[];
+  isOriginalChanged: boolean;
 }
 
-// -------------------------------------------------------------
-// Text / Line Diff Algorithm Core
-// -------------------------------------------------------------
 export function normalizeLine(line: string, options: DiffOptions): string {
   let res = line;
-  if (options.ignoreCase) {
-    res = res.toLowerCase();
-  }
-  if (options.ignoreWhitespace) {
-    res = res.trim().replace(/\s+/g, " ");
-  }
+  if (options.ignoreCase) res = res.toLowerCase();
+  if (options.ignoreWhitespace) res = res.trim().replace(/\s+/g, " ");
   return res;
 }
 
-export function computeLineLCS(
-  lines1: string[],
-  lines2: string[],
-  options: DiffOptions = { ignoreWhitespace: false, ignoreCase: false },
-): { oldIdx: number; newIdx: number }[] {
-  const m = lines1.length;
-  const n = lines2.length;
-  const dp: { len: number; disp: number }[][] = Array.from({ length: m + 1 }, () =>
-    Array.from({ length: n + 1 }, () => ({ len: 0, disp: 0 })),
-  );
-
-  for (let i = 1; i <= m; i++) {
-    const s1Norm = normalizeLine(lines1[i - 1], options);
-    for (let j = 1; j <= n; j++) {
-      const s2Norm = normalizeLine(lines2[j - 1], options);
-      if (s1Norm === s2Norm) {
-        const prev = dp[i - 1][j - 1];
-        dp[i][j] = {
-          len: prev.len + 1,
-          disp: prev.disp + Math.abs(i - 1 - (j - 1)),
-        };
-      } else {
-        const top = dp[i - 1][j];
-        const left = dp[i][j - 1];
-        if (top.len > left.len) {
-          dp[i][j] = { ...top };
-        } else if (left.len > top.len) {
-          dp[i][j] = { ...left };
-        } else {
-          dp[i][j] = top.disp <= left.disp ? { ...top } : { ...left };
-        }
-      }
+export function buildAlignedRows(
+  oldText: string,
+  newText: string,
+  options: DiffOptions,
+): (AlignedRow & { type?: "MOD" | "ADD" | "DEL" | "SAME" })[] {
+  const res = computeJsDiff(oldText, newText, options);
+  return res.rows.map((row: AlignedRow) => {
+    let type: "MOD" | "ADD" | "DEL" | "SAME" = "SAME";
+    if (row.isChanged) {
+      if (!row.left.isSpacer && !row.right.isSpacer) type = "MOD";
+      else if (row.left.isSpacer && !row.right.isSpacer) type = "ADD";
+      else type = "DEL";
     }
-  }
-
-  let i = m;
-  let j = n;
-  const matches: { oldIdx: number; newIdx: number }[] = [];
-  while (i > 0 && j > 0) {
-    const s1Norm = normalizeLine(lines1[i - 1], options);
-    const s2Norm = normalizeLine(lines2[j - 1], options);
-    if (s1Norm === s2Norm) {
-      const diag = dp[i - 1][j - 1];
-      const curr = dp[i][j];
-      if (curr.len === diag.len + 1) {
-        matches.unshift({ oldIdx: i - 1, newIdx: j - 1 });
-        i--;
-        j--;
-        continue;
-      }
-    }
-    const top = dp[i - 1][j];
-    const left = dp[i][j - 1];
-    if (top.len > left.len) {
-      i--;
-    } else if (left.len > top.len) {
-      j--;
-    } else {
-      if (top.disp <= left.disp) i--;
-      else j--;
-    }
-  }
-  return matches;
-}
-
-export function getDetailedLineDiff(
-  s1: string,
-  s2: string,
-  options: DiffOptions = { ignoreWhitespace: false, ignoreCase: false },
-): { left: DiffSegment[]; right: DiffSegment[] } {
-  if (normalizeLine(s1, options) === normalizeLine(s2, options)) {
-    return {
-      left: [{ text: s1, isDiff: false }],
-      right: [{ text: s2, isDiff: false }],
-    };
-  }
-
-  let start = 0;
-  while (start < s1.length && start < s2.length && s1[start] === s2[start]) {
-    start++;
-  }
-
-  let end1 = s1.length - 1;
-  let end2 = s2.length - 1;
-  while (end1 >= start && end2 >= start && s1[end1] === s2[end2]) {
-    end1--;
-    end2--;
-  }
-
-  const prefix = s1.substring(0, start);
-  const mid1 = s1.substring(start, end1 + 1);
-  const mid2 = s2.substring(start, end2 + 1);
-  const suffix = s1.substring(end1 + 1);
-
-  const leftRes: DiffSegment[] = [];
-  const rightRes: DiffSegment[] = [];
-
-  if (prefix) {
-    leftRes.push({ text: prefix, isDiff: false });
-    rightRes.push({ text: prefix, isDiff: false });
-  }
-
-  if (mid1 && mid2) {
-    let bestSub = "";
-    let bestI = -1;
-    let bestJ = -1;
-
-    for (let len = Math.min(mid1.length, mid2.length); len >= 2; len--) {
-      for (let i = 0; i <= mid1.length - len; i++) {
-        const sub = mid1.substring(i, i + len);
-        const j = mid2.indexOf(sub);
-        if (j !== -1) {
-          bestSub = sub;
-          bestI = i;
-          bestJ = j;
-          break;
-        }
-      }
-      if (bestSub) break;
-    }
-
-    if (bestSub) {
-      const subDiff1 = getDetailedLineDiff(mid1.substring(0, bestI), mid2.substring(0, bestJ), options);
-      const subDiff2 = getDetailedLineDiff(
-        mid1.substring(bestI + bestSub.length),
-        mid2.substring(bestJ + bestSub.length),
-        options,
-      );
-
-      leftRes.push(...subDiff1.left);
-      rightRes.push(...subDiff1.right);
-
-      leftRes.push({ text: bestSub, isDiff: false });
-      rightRes.push({ text: bestSub, isDiff: false });
-
-      leftRes.push(...subDiff2.left);
-      rightRes.push(...subDiff2.right);
-    } else {
-      leftRes.push({ text: mid1, isDiff: true });
-      rightRes.push({ text: mid2, isDiff: true });
-    }
-  } else {
-    if (mid1) leftRes.push({ text: mid1, isDiff: true });
-    if (mid2) rightRes.push({ text: mid2, isDiff: true });
-  }
-
-  if (suffix) {
-    leftRes.push({ text: suffix, isDiff: false });
-    rightRes.push({ text: suffix, isDiff: false });
-  }
-
-  return { left: leftRes, right: rightRes };
-}
-
-export function buildAlignedRows(oldText: string, newText: string, options: DiffOptions): AlignedRow[] {
-  const lines1 = oldText ? oldText.split("\n") : [];
-  const lines2 = newText ? newText.split("\n") : [];
-
-  if (lines1.length === 0 && lines2.length === 0) return [];
-
-  const matches = computeLineLCS(lines1, lines2, options);
-  const allMatches = [...matches, { oldIdx: lines1.length, newIdx: lines2.length }];
-  const rows: AlignedRow[] = [];
-
-  let lastOld = 0;
-  let lastNew = 0;
-
-  for (const match of allMatches) {
-    const oldDiffCount = match.oldIdx - lastOld;
-    const newDiffCount = match.newIdx - lastNew;
-    const maxDiff = Math.max(oldDiffCount, newDiffCount);
-
-    for (let k = 0; k < maxDiff; k++) {
-      const hasOld = k < oldDiffCount;
-      const hasNew = k < newDiffCount;
-
-      const oldLineIdx = hasOld ? lastOld + k : null;
-      const newLineIdx = hasNew ? lastNew + k : null;
-
-      const s1 = oldLineIdx !== null ? lines1[oldLineIdx] : "";
-      const s2 = newLineIdx !== null ? lines2[newLineIdx] : "";
-
-      if (oldLineIdx !== null && newLineIdx !== null) {
-        const diff = getDetailedLineDiff(s1, s2, options);
-        rows.push({
-          isChanged: true,
-          type: "MOD",
-          left: {
-            lineNum: oldLineIdx + 1,
-            text: s1,
-            segments: diff.left,
-            isSpacer: false,
-          },
-          right: {
-            lineNum: newLineIdx + 1,
-            text: s2,
-            segments: diff.right,
-            isSpacer: false,
-          },
-        });
-      } else if (oldLineIdx !== null && newLineIdx === null) {
-        rows.push({
-          isChanged: true,
-          type: "DEL",
-          left: {
-            lineNum: oldLineIdx + 1,
-            text: s1,
-            segments: [{ text: s1, isDiff: true }],
-            isSpacer: false,
-          },
-          right: {
-            text: "",
-            segments: [],
-            isSpacer: true,
-          },
-        });
-      } else if (oldLineIdx === null && newLineIdx !== null) {
-        rows.push({
-          isChanged: true,
-          type: "ADD",
-          left: {
-            text: "",
-            segments: [],
-            isSpacer: true,
-          },
-          right: {
-            lineNum: newLineIdx + 1,
-            text: s2,
-            segments: [{ text: s2, isDiff: true }],
-            isSpacer: false,
-          },
-        });
-      }
-    }
-
-    if (match.oldIdx < lines1.length && match.newIdx < lines2.length) {
-      const matchingText1 = lines1[match.oldIdx];
-      const matchingText2 = lines2[match.newIdx];
-      rows.push({
-        isChanged: false,
-        type: "SAME",
-        left: {
-          lineNum: match.oldIdx + 1,
-          text: matchingText1,
-          segments: [{ text: matchingText1, isDiff: false }],
-          isSpacer: false,
-        },
-        right: {
-          lineNum: match.newIdx + 1,
-          text: matchingText2,
-          segments: [{ text: matchingText2, isDiff: false }],
-          isSpacer: false,
-        },
-      });
-    }
-
-    lastOld = match.oldIdx + 1;
-    lastNew = match.newIdx + 1;
-  }
-
-  return rows;
+    return { ...row, type };
+  });
 }
 
 export function formatFileSize(bytes: number): string {
@@ -349,11 +94,9 @@ export function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// -------------------------------------------------------------
-// Component: FileFolderDiffComparer
-// -------------------------------------------------------------
 export const FileFolderDiffComparer: React.FC = () => {
   const { t, language } = useTranslation();
+
   // Mode switcher: "file" | "folder"
   const [mode, setMode] = useState<"file" | "folder">("file");
 
@@ -368,7 +111,6 @@ export const FileFolderDiffComparer: React.FC = () => {
   const [fileA, setFileA] = useState<FileItem | null>(null);
   const [fileB, setFileB] = useState<FileItem | null>(null);
   const [isDraggingGlobal, setIsDraggingGlobal] = useState(false);
-  const [currentDiffIndex, setCurrentDiffIndex] = useState<number>(-1);
 
   // Mode 2: Folder Diff States
   const [folderAName, setFolderAName] = useState<string>("");
@@ -377,43 +119,95 @@ export const FileFolderDiffComparer: React.FC = () => {
   const [folderBFiles, setFolderBFiles] = useState<Map<string, FileItem>>(new Map());
   const [selectedRelativePath, setSelectedRelativePath] = useState<string | null>(null);
   const [folderSearch, setFolderSearch] = useState<string>("");
-  const [folderStatusFilter, setFolderStatusFilter] = useState<"all" | "modified" | "added" | "deleted" | "unchanged">(
-    "all",
-  );
+  const [folderStatusFilter, setFolderStatusFilter] = useState<
+    "all" | "modified" | "added" | "deleted" | "unchanged"
+  >("all");
 
-  // Refs for scrolling and input triggering
+  // Diff Engine & Virtual Scroll states
+  const [alignedRows, setAlignedRows] = useState<AlignedRow[]>([]);
+  const [totalDifferences, setTotalDifferences] = useState<number>(0);
+  const [isComputing, setIsComputing] = useState<boolean>(false);
+  const [currentDiffIndex, setCurrentDiffIndex] = useState<number>(-1);
+  const [scrollTop, setScrollTop] = useState<number>(0);
+  const [viewportHeight, setViewportHeight] = useState<number>(500);
+
+  // Refs
   const leftScrollRef = useRef<HTMLDivElement>(null);
   const rightScrollRef = useRef<HTMLDivElement>(null);
   const unifiedScrollRef = useRef<HTMLDivElement>(null);
+  const viewportContainerRef = useRef<HTMLDivElement>(null);
+  const isSyncingLeft = useRef(false);
+  const isSyncingRight = useRef(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileAInputRef = useRef<HTMLInputElement>(null);
   const fileBInputRef = useRef<HTMLInputElement>(null);
   const folderAInputRef = useRef<HTMLInputElement>(null);
   const folderBInputRef = useRef<HTMLInputElement>(null);
 
-  // Sync scrolling between left & right in side-by-side
-  const handleScroll = (source: "left" | "right") => {
-    if (source === "left" && leftScrollRef.current && rightScrollRef.current) {
-      rightScrollRef.current.scrollTop = leftScrollRef.current.scrollTop;
-      rightScrollRef.current.scrollLeft = leftScrollRef.current.scrollLeft;
-    } else if (source === "right" && leftScrollRef.current && rightScrollRef.current) {
-      leftScrollRef.current.scrollTop = rightScrollRef.current.scrollTop;
-      leftScrollRef.current.scrollLeft = rightScrollRef.current.scrollLeft;
-    }
-  };
+  // Helper: Read file metadata and check binary
+  const createFileItem = async (file: File, customPath?: string, eagerText = false): Promise<FileItem> => {
+    let isBinary = isBinaryFileName(file.name);
+    let content: string | undefined = undefined;
+    let lineCount: number | undefined = undefined;
 
-  // Helper: Read single File object into FileItem
-  const readFileToItem = async (file: File, customPath?: string): Promise<FileItem> => {
-    const text = await file.text();
-    const lines = text ? text.split("\n") : [];
+    if (!isBinary) {
+      try {
+        const slice = await file.slice(0, 512).arrayBuffer();
+        if (isBinaryBuffer(new Uint8Array(slice))) {
+          isBinary = true;
+        }
+      } catch (err) {
+        console.warn("Could not check binary buffer:", err);
+      }
+    }
+
+    if (eagerText && !isBinary) {
+      try {
+        content = await file.text();
+        lineCount = splitLines(content).length;
+      } catch (err) {
+        console.error("Failed to read text:", err);
+        isBinary = true;
+      }
+    }
+
     return {
       name: file.name,
       path: customPath || file.name,
       size: file.size,
-      lineCount: lines.length,
-      content: text,
+      lineCount,
+      content,
+      isBinary,
       rawFile: file,
     };
   };
+
+  // Helper: Lazily load text content on-demand
+  const ensureContent = useCallback(async (item: FileItem | null | undefined): Promise<FileItem | null> => {
+    if (!item) return null;
+    if (item.content !== undefined || item.isBinary) return item;
+
+    if (item.rawFile) {
+      try {
+        const slice = await item.rawFile.slice(0, 512).arrayBuffer();
+        if (isBinaryBuffer(new Uint8Array(slice))) {
+          item.isBinary = true;
+          return { ...item, isBinary: true };
+        }
+
+        const text = await item.rawFile.text();
+        const lines = splitLines(text);
+        item.content = text;
+        item.lineCount = lines.length;
+        return { ...item, content: text, lineCount: lines.length };
+      } catch (err) {
+        console.error("Failed to load file text:", err);
+        item.isBinary = true;
+        return { ...item, isBinary: true };
+      }
+    }
+    return item;
+  }, []);
 
   // Drag & drop handlers for 2-File Mode
   const handleFileDropOnCard = async (e: React.DragEvent, targetSide: "left" | "right") => {
@@ -425,16 +219,14 @@ export const FileFolderDiffComparer: React.FC = () => {
     if (droppedFiles.length === 0) return;
 
     if (droppedFiles.length >= 2) {
-      // User dropped 2 files at once: Assign first to A and second to B!
-      const itemA = await readFileToItem(droppedFiles[0]);
-      const itemB = await readFileToItem(droppedFiles[1]);
+      const itemA = await createFileItem(droppedFiles[0], undefined, true);
+      const itemB = await createFileItem(droppedFiles[1], undefined, true);
       setFileA(itemA);
       setFileB(itemB);
       return;
     }
 
-    // Dropped 1 file on specific target
-    const item = await readFileToItem(droppedFiles[0]);
+    const item = await createFileItem(droppedFiles[0], undefined, true);
     if (targetSide === "left") setFileA(item);
     else setFileB(item);
   };
@@ -448,13 +240,12 @@ export const FileFolderDiffComparer: React.FC = () => {
     if (droppedFiles.length === 0) return;
 
     if (droppedFiles.length >= 2) {
-      const itemA = await readFileToItem(droppedFiles[0]);
-      const itemB = await readFileToItem(droppedFiles[1]);
+      const itemA = await createFileItem(droppedFiles[0], undefined, true);
+      const itemB = await createFileItem(droppedFiles[1], undefined, true);
       setFileA(itemA);
       setFileB(itemB);
     } else {
-      // If 1 file dropped into the broad area: assign to whichever side is empty, or side A
-      const item = await readFileToItem(droppedFiles[0]);
+      const item = await createFileItem(droppedFiles[0], undefined, true);
       if (!fileA) setFileA(item);
       else setFileB(item);
     }
@@ -464,7 +255,7 @@ export const FileFolderDiffComparer: React.FC = () => {
   const handleReloadFile = async (side: "left" | "right") => {
     const target = side === "left" ? fileA : fileB;
     if (target?.rawFile) {
-      const updated = await readFileToItem(target.rawFile, target.path);
+      const updated = await createFileItem(target.rawFile, target.path, true);
       if (side === "left") setFileA(updated);
       else setFileB(updated);
     }
@@ -484,11 +275,8 @@ export const FileFolderDiffComparer: React.FC = () => {
     setCurrentDiffIndex(-1);
   };
 
-  // Process folder upload via HTML5 webkitRelativePath
-  const processFolderFiles = async (
-    files: FileList | null,
-    side: "A" | "B",
-  ) => {
+  // Fast metadata-only folder scanner (LAZY LOADING)
+  const processFolderFiles = async (files: FileList | null, side: "A" | "B") => {
     if (!files || files.length === 0) return;
 
     const fileMap = new Map<string, FileItem>();
@@ -503,7 +291,6 @@ export const FileFolderDiffComparer: React.FC = () => {
         rootDirName = parts[0];
       }
 
-      // Normalized relative path inside the folder (remove root dir prefix)
       const normalizedPath = parts.length > 1 ? parts.slice(1).join("/") : relPath;
 
       // Filter out typical system / git junk files
@@ -515,7 +302,17 @@ export const FileFolderDiffComparer: React.FC = () => {
         continue;
       }
 
-      const item = await readFileToItem(file, normalizedPath);
+      const isBinary = isBinaryFileName(file.name);
+
+      // Fast metadata object - NO eager text reading!
+      const item: FileItem = {
+        name: file.name,
+        path: normalizedPath,
+        size: file.size,
+        isBinary,
+        rawFile: file,
+      };
+
       fileMap.set(normalizedPath, item);
     }
 
@@ -528,7 +325,7 @@ export const FileFolderDiffComparer: React.FC = () => {
     }
   };
 
-  // Compute folder comparison items list
+  // Compute folder comparison list via fast Heuristics
   const folderComparisonList: FolderComparisonItem[] = useMemo(() => {
     if (folderAFiles.size === 0 && folderBFiles.size === 0) return [];
 
@@ -540,26 +337,32 @@ export const FileFolderDiffComparer: React.FC = () => {
     for (const relPath of sortedPaths) {
       const a = folderAFiles.get(relPath);
       const b = folderBFiles.get(relPath);
+      const isBinary = a?.isBinary || b?.isBinary || false;
 
       if (a && !b) {
-        result.push({ relativePath: relPath, status: "deleted", fileA: a });
+        result.push({ relativePath: relPath, status: "deleted", fileA: a, isBinary });
       } else if (!a && b) {
-        result.push({ relativePath: relPath, status: "added", fileB: b });
+        result.push({ relativePath: relPath, status: "added", fileB: b, isBinary });
       } else if (a && b) {
-        const normA = normalizeLine(a.content, options);
-        const normB = normalizeLine(b.content, options);
-        const isMod = normA !== normB;
+        // Fast size heuristic: if sizes differ, it is definitely modified!
+        let status: "modified" | "unchanged" = "unchanged";
+        if (a.size !== b.size) {
+          status = "modified";
+        } else if (a.content !== undefined && b.content !== undefined) {
+          status = a.content === b.content ? "unchanged" : "modified";
+        }
         result.push({
           relativePath: relPath,
-          status: isMod ? "modified" : "unchanged",
+          status,
           fileA: a,
           fileB: b,
+          isBinary,
         });
       }
     }
 
     return result;
-  }, [folderAFiles, folderBFiles, options]);
+  }, [folderAFiles, folderBFiles]);
 
   // Statistics for Folder comparison
   const folderStats = useMemo(() => {
@@ -592,7 +395,7 @@ export const FileFolderDiffComparer: React.FC = () => {
   }, [folderComparisonList, folderStatusFilter, folderSearch]);
 
   // Automatically select the first modified / added / deleted file when list loads
-  React.useEffect(() => {
+  useEffect(() => {
     if (folderComparisonList.length > 0 && !selectedRelativePath) {
       const firstChanged = folderComparisonList.find((i) => i.status !== "unchanged");
       if (firstChanged) {
@@ -603,34 +406,298 @@ export const FileFolderDiffComparer: React.FC = () => {
     }
   }, [folderComparisonList, selectedRelativePath]);
 
-  // Active diff texts to compare depending on current mode
-  const { activeTextA, activeTextB, activeLabelA, activeLabelB } = useMemo(() => {
+  // Active target items
+  const { currentItemA, currentItemB, activeLabelA, activeLabelB, isBinaryComparison } = useMemo(() => {
     if (mode === "file") {
+      const isBin = fileA?.isBinary || fileB?.isBinary || false;
       return {
-        activeTextA: fileA?.content || "",
-        activeTextB: fileB?.content || "",
+        currentItemA: fileA,
+        currentItemB: fileB,
         activeLabelA: fileA?.name || t.diff.fileA,
         activeLabelB: fileB?.name || t.diff.fileB,
+        isBinaryComparison: isBin,
       };
     } else {
-      // Folder mode
-      const selectedItem = folderComparisonList.find((i) => i.relativePath === selectedRelativePath);
+      const selected = folderComparisonList.find((i) => i.relativePath === selectedRelativePath);
+      const isBin = selected?.isBinary || false;
       return {
-        activeTextA: selectedItem?.fileA?.content || "",
-        activeTextB: selectedItem?.fileB?.content || "",
-        activeLabelA: selectedItem?.fileA ? `${folderAName}/${selectedItem.relativePath}` : `(${t.diff.folderA})`,
-        activeLabelB: selectedItem?.fileB ? `${folderBName}/${selectedItem.relativePath}` : `(${t.diff.folderB})`,
+        currentItemA: selected?.fileA || null,
+        currentItemB: selected?.fileB || null,
+        activeLabelA: selected?.fileA ? `${folderAName}/${selected.relativePath}` : `(${t.diff.folderA})`,
+        activeLabelB: selected?.fileB ? `${folderBName}/${selected.relativePath}` : `(${t.diff.folderB})`,
+        isBinaryComparison: isBin,
       };
     }
-  }, [mode, fileA, fileB, folderComparisonList, selectedRelativePath, folderAName, folderBName]);
+  }, [mode, fileA, fileB, folderComparisonList, selectedRelativePath, folderAName, folderBName, t]);
 
-  // Compute aligned diff rows for the active comparison
-  const alignedRows: AlignedRow[] = useMemo(() => {
-    if (!activeTextA && !activeTextB) return [];
-    return buildAlignedRows(activeTextA, activeTextB, options);
-  }, [activeTextA, activeTextB, options]);
+  // On-demand diff calculation with debounce & race cancellation
+  useEffect(() => {
+    let isCurrent = true;
 
-  // Indices of changed rows for Quick Jump (Next/Prev difference)
+    if (!currentItemA && !currentItemB) {
+      setAlignedRows([]);
+      setTotalDifferences(0);
+      setIsComputing(false);
+      return;
+    }
+
+    if (isBinaryComparison) {
+      setAlignedRows([]);
+      setTotalDifferences(currentItemA?.size !== currentItemB?.size ? 1 : 0);
+      setIsComputing(false);
+      return;
+    }
+
+    setIsComputing(true);
+
+    const timer = setTimeout(async () => {
+      try {
+        const loadedA = await ensureContent(currentItemA);
+        const loadedB = await ensureContent(currentItemB);
+
+        if (!isCurrent) return;
+
+        if (loadedA?.isBinary || loadedB?.isBinary) {
+          setAlignedRows([]);
+          setTotalDifferences(loadedA?.size !== loadedB?.size ? 1 : 0);
+          setIsComputing(false);
+          return;
+        }
+
+        const textA = loadedA?.content || "";
+        const textB = loadedB?.content || "";
+
+        const result = await computeDiff(textA, textB, options);
+        if (isCurrent) {
+          setAlignedRows(result.rows);
+          setTotalDifferences(result.differencesCount);
+          setIsComputing(false);
+        }
+      } catch (err) {
+        if (isCurrent) {
+          console.error("Diff calculation error:", err);
+          setIsComputing(false);
+        }
+      }
+    }, 120);
+
+    return () => {
+      isCurrent = false;
+      clearTimeout(timer);
+    };
+  }, [currentItemA, currentItemB, isBinaryComparison, options, ensureContent]);
+
+  // Monitor viewport container height
+  useEffect(() => {
+    const el = viewportContainerRef.current;
+    if (!el) return;
+
+    const updateHeight = () => {
+      if (el.clientHeight > 0) {
+        setViewportHeight(el.clientHeight);
+      }
+    };
+
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [viewMode, mode]);
+
+  // Flatten rows for unified mode so each element has exactly ROW_HEIGHT
+  const unifiedLines: UnifiedLine[] = useMemo(() => {
+    if (viewMode !== "unified") return [];
+    const lines: UnifiedLine[] = [];
+
+    for (const row of alignedRows) {
+      if (!row.isChanged) {
+        lines.push({
+          type: "equal",
+          leftLineNum: row.left.lineNum,
+          rightLineNum: row.right.lineNum,
+          text: row.left.text,
+          segments: row.left.segments,
+          isOriginalChanged: false,
+        });
+      } else {
+        if (!row.left.isSpacer) {
+          lines.push({
+            type: "delete",
+            leftLineNum: row.left.lineNum,
+            rightLineNum: undefined,
+            text: row.left.text,
+            segments: row.left.segments,
+            isOriginalChanged: true,
+          });
+        }
+        if (!row.right.isSpacer) {
+          lines.push({
+            type: "insert",
+            leftLineNum: undefined,
+            rightLineNum: row.right.lineNum,
+            text: row.right.text,
+            segments: row.right.segments,
+            isOriginalChanged: true,
+          });
+        }
+      }
+    }
+
+    return lines;
+  }, [alignedRows, viewMode]);
+
+  // Total items in the active virtual list
+  const totalItems = viewMode === "split" ? alignedRows.length : unifiedLines.length;
+  const totalHeight = totalItems * ROW_HEIGHT;
+
+  // Virtual window calculation
+  const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
+  const endIndex = Math.min(totalItems, Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + OVERSCAN);
+  const topPadding = startIndex * ROW_HEIGHT;
+  const bottomPadding = Math.max(0, (totalItems - endIndex) * ROW_HEIGHT);
+
+  const visibleSplitRows = useMemo(() => {
+    if (viewMode !== "split") return [];
+    return alignedRows.slice(startIndex, endIndex);
+  }, [alignedRows, startIndex, endIndex, viewMode]);
+
+  const visibleUnifiedLines = useMemo(() => {
+    if (viewMode !== "unified") return [];
+    return unifiedLines.slice(startIndex, endIndex);
+  }, [unifiedLines, startIndex, endIndex, viewMode]);
+
+  // Synchronized scroll handlers
+  const handleLeftScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (isSyncingLeft.current) {
+      isSyncingLeft.current = false;
+      return;
+    }
+    const { scrollTop: newScrollTop, scrollLeft: newScrollLeft } = e.currentTarget;
+    if (rightScrollRef.current) {
+      isSyncingRight.current = true;
+      if (Math.abs(rightScrollRef.current.scrollTop - newScrollTop) > 0.5) {
+        rightScrollRef.current.scrollTop = newScrollTop;
+      }
+      if (Math.abs(rightScrollRef.current.scrollLeft - newScrollLeft) > 0.5) {
+        rightScrollRef.current.scrollLeft = newScrollLeft;
+      }
+    }
+    setScrollTop(newScrollTop);
+  }, []);
+
+  const handleRightScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (isSyncingRight.current) {
+      isSyncingRight.current = false;
+      return;
+    }
+    const { scrollTop: newScrollTop, scrollLeft: newScrollLeft } = e.currentTarget;
+    if (leftScrollRef.current) {
+      isSyncingLeft.current = true;
+      if (Math.abs(leftScrollRef.current.scrollTop - newScrollTop) > 0.5) {
+        leftScrollRef.current.scrollTop = newScrollTop;
+      }
+      if (Math.abs(leftScrollRef.current.scrollLeft - newScrollLeft) > 0.5) {
+        leftScrollRef.current.scrollLeft = newScrollLeft;
+      }
+    }
+    setScrollTop(newScrollTop);
+  }, []);
+
+  const handleUnifiedScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    setScrollTop(e.currentTarget.scrollTop);
+  }, []);
+
+  // Compute maximum line lengths for stable synchronized horizontal scrolling
+  const maxSplitCharCount = useMemo(() => {
+    let max = 0;
+    for (const row of alignedRows) {
+      if (!row.left.isSpacer && row.left.text.length > max) max = row.left.text.length;
+      if (!row.right.isSpacer && row.right.text.length > max) max = row.right.text.length;
+    }
+    return max;
+  }, [alignedRows]);
+
+  const maxUnifiedCharCount = useMemo(() => {
+    let max = 0;
+    for (const line of unifiedLines) {
+      if (line.text.length > max) max = line.text.length;
+    }
+    return max;
+  }, [unifiedLines]);
+
+  // Draw Canvas Minimap
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || totalItems === 0) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const canvasWidth = canvas.width;
+    const canvasHeight = canvas.height;
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+
+    const scale = canvasHeight / totalItems;
+
+    if (viewMode === "split") {
+      for (let i = 0; i < alignedRows.length; i++) {
+        const row = alignedRows[i];
+        if (!row.isChanged) continue;
+
+        const y = i * scale;
+        const h = Math.max(1.5, scale);
+
+        const isDel = !row.left.isSpacer && row.right.isSpacer;
+        const isAdd = row.left.isSpacer && !row.right.isSpacer;
+        const isMod = !row.left.isSpacer && !row.right.isSpacer;
+
+        if (isMod) {
+          ctx.fillStyle = "#f87171";
+          ctx.fillRect(0, y, canvasWidth / 2, h);
+          ctx.fillStyle = "#2dd4bf";
+          ctx.fillRect(canvasWidth / 2, y, canvasWidth / 2, h);
+        } else if (isDel) {
+          ctx.fillStyle = "#f87171";
+          ctx.fillRect(0, y, canvasWidth, h);
+        } else if (isAdd) {
+          ctx.fillStyle = "#2dd4bf";
+          ctx.fillRect(0, y, canvasWidth, h);
+        }
+      }
+    } else {
+      for (let i = 0; i < unifiedLines.length; i++) {
+        const line = unifiedLines[i];
+        if (line.type === "equal") continue;
+
+        const y = i * scale;
+        const h = Math.max(1.5, scale);
+
+        ctx.fillStyle = line.type === "delete" ? "#f87171" : "#2dd4bf";
+        ctx.fillRect(0, y, canvasWidth, h);
+      }
+    }
+  }, [alignedRows, unifiedLines, totalItems, totalHeight, viewportHeight, viewMode]);
+
+  // Click on minimap to jump
+  const handleMinimapClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas || totalHeight === 0) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const clickY = e.clientY - rect.top;
+    const targetRatio = clickY / rect.height;
+    const targetScrollTop = Math.max(0, targetRatio * totalHeight - viewportHeight / 2);
+
+    if (viewMode === "split") {
+      if (leftScrollRef.current) leftScrollRef.current.scrollTop = targetScrollTop;
+      if (rightScrollRef.current) rightScrollRef.current.scrollTop = targetScrollTop;
+    } else {
+      if (unifiedScrollRef.current) unifiedScrollRef.current.scrollTop = targetScrollTop;
+    }
+    setScrollTop(targetScrollTop);
+  };
+
+  // Jump to Next / Prev Difference
   const changedRowIndices = useMemo(() => {
     const indices: number[] = [];
     alignedRows.forEach((row, idx) => {
@@ -639,7 +706,6 @@ export const FileFolderDiffComparer: React.FC = () => {
     return indices;
   }, [alignedRows]);
 
-  // Jump to next or previous difference
   const jumpToDiff = (direction: "next" | "prev") => {
     if (changedRowIndices.length === 0) return;
 
@@ -654,16 +720,17 @@ export const FileFolderDiffComparer: React.FC = () => {
     }
 
     setCurrentDiffIndex(nextIndex);
-
-    // Scroll to the row element by index
-    const targetId = `diff-row-${nextIndex}`;
-    const el = document.getElementById(targetId);
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    const targetScrollTop = nextIndex * ROW_HEIGHT - viewportHeight / 2;
+    if (viewMode === "split") {
+      if (leftScrollRef.current) leftScrollRef.current.scrollTop = targetScrollTop;
+      if (rightScrollRef.current) rightScrollRef.current.scrollTop = targetScrollTop;
+    } else {
+      if (unifiedScrollRef.current) unifiedScrollRef.current.scrollTop = targetScrollTop;
     }
+    setScrollTop(targetScrollTop);
   };
 
-  // Render character segments inside row
+  // Render character diff segments
   const renderSegments = (
     segments: DiffSegment[],
     isSpacer: boolean,
@@ -795,22 +862,27 @@ export const FileFolderDiffComparer: React.FC = () => {
             <button
               onClick={() => jumpToDiff("prev")}
               className="p-1 rounded hover:bg-white dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
-              title="Khác biệt trước (Shift+F7)"
+              title="Khác biệt trước"
             >
               <ChevronUp className="w-3.5 h-3.5" />
             </button>
             <span className="text-[11px] font-mono px-1.5 text-slate-600 dark:text-slate-400">
-              {currentDiffIndex >= 0 ? `${changedRowIndices.indexOf(currentDiffIndex) + 1} / ${changedRowIndices.length}` : `${changedRowIndices.length} khác biệt`}
+              {currentDiffIndex >= 0
+                ? `${changedRowIndices.indexOf(currentDiffIndex) + 1} / ${changedRowIndices.length}`
+                : `${changedRowIndices.length} khác biệt`}
             </span>
             <button
               onClick={() => jumpToDiff("next")}
               className="p-1 rounded hover:bg-white dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
-              title="Khác biệt tiếp theo (F7)"
+              title="Khác biệt tiếp theo"
             >
               <ChevronDown className="w-3.5 h-3.5" />
             </button>
           </div>
         )}
+
+        {/* Computing Spinner */}
+        {isComputing && <Loader2 className="w-4 h-4 animate-spin text-indigo-500" />}
 
         {/* Swap files (only in file mode) */}
         {mode === "file" && (fileA || fileB) && (
@@ -876,7 +948,7 @@ export const FileFolderDiffComparer: React.FC = () => {
             className="hidden"
             onChange={async (e) => {
               if (e.target.files && e.target.files[0]) {
-                const item = await readFileToItem(e.target.files[0]);
+                const item = await createFileItem(e.target.files[0], undefined, true);
                 setFileA(item);
               }
             }}
@@ -887,7 +959,7 @@ export const FileFolderDiffComparer: React.FC = () => {
             className="hidden"
             onChange={async (e) => {
               if (e.target.files && e.target.files[0]) {
-                const item = await readFileToItem(e.target.files[0]);
+                const item = await createFileItem(e.target.files[0], undefined, true);
                 setFileB(item);
               }
             }}
@@ -930,7 +1002,7 @@ export const FileFolderDiffComparer: React.FC = () => {
                   <div className="p-3 flex items-center justify-between">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/80 border border-indigo-200 dark:border-indigo-800 flex items-center justify-center text-indigo-600 shrink-0">
-                        <FileCode2 className="w-5 h-5" />
+                        {fileA.isBinary ? <Binary className="w-5 h-5 text-amber-500" /> : <FileCode2 className="w-5 h-5" />}
                       </div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
@@ -942,7 +1014,7 @@ export const FileFolderDiffComparer: React.FC = () => {
                           </span>
                         </div>
                         <div className="text-[11px] text-slate-500 font-mono mt-0.5">
-                          {formatFileSize(fileA.size)} • {fileA.lineCount} {t.common.lines}
+                          {formatFileSize(fileA.size)} {fileA.isBinary ? "• Tệp nhị phân" : fileA.lineCount !== undefined ? `• ${fileA.lineCount} dòng` : ""}
                         </div>
                       </div>
                     </div>
@@ -997,7 +1069,7 @@ export const FileFolderDiffComparer: React.FC = () => {
                   <div className="p-3 flex items-center justify-between">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-10 h-10 rounded-xl bg-teal-50 dark:bg-teal-950/80 border border-teal-200 dark:border-teal-800 flex items-center justify-center text-teal-600 shrink-0">
-                        <FileCode2 className="w-5 h-5" />
+                        {fileB.isBinary ? <Binary className="w-5 h-5 text-amber-500" /> : <FileCode2 className="w-5 h-5" />}
                       </div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
@@ -1009,7 +1081,7 @@ export const FileFolderDiffComparer: React.FC = () => {
                           </span>
                         </div>
                         <div className="text-[11px] text-slate-500 font-mono mt-0.5">
-                          {formatFileSize(fileB.size)} • {fileB.lineCount} {t.common.lines}
+                          {formatFileSize(fileB.size)} {fileB.isBinary ? "• Tệp nhị phân" : fileB.lineCount !== undefined ? `• ${fileB.lineCount} dòng` : ""}
                         </div>
                       </div>
                     </div>
@@ -1057,7 +1129,7 @@ export const FileFolderDiffComparer: React.FC = () => {
           )}
 
           {/* ============================================================== */}
-          {/* TOP SECTION B: FOLDER SELECTION BAR (When in folder mode)      */}
+          {/* TOP SECTION B: FOLDER SELECTION BAR                            */}
           {/* ============================================================== */}
           {mode === "folder" && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 shrink-0">
@@ -1126,7 +1198,6 @@ export const FileFolderDiffComparer: React.FC = () => {
               <div className="w-80 shrink-0 border-r border-slate-200 dark:border-slate-800 flex flex-col bg-slate-50/50 dark:bg-slate-900/50 overflow-hidden">
                 {/* Search & Filter Bar */}
                 <div className="p-2.5 border-b border-slate-200 dark:border-slate-800 space-y-2">
-                  {/* Search Input */}
                   <div className="relative">
                     <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
                     <input
@@ -1138,7 +1209,7 @@ export const FileFolderDiffComparer: React.FC = () => {
                     />
                   </div>
 
-                  {/* Status Pills Filter */}
+                  {/* Status Filter Pills */}
                   <div className="flex items-center gap-1 overflow-x-auto text-[11px] pb-0.5">
                     <button
                       onClick={() => setFolderStatusFilter("all")}
@@ -1231,7 +1302,11 @@ export const FileFolderDiffComparer: React.FC = () => {
                           }`}
                         >
                           <div className="flex items-center gap-2 min-w-0 pr-2">
-                            <File className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            {item.isBinary ? (
+                              <Binary className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                            ) : (
+                              <File className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            )}
                             <span className="truncate font-mono text-[11px]">{item.relativePath}</span>
                           </div>
                           {badge}
@@ -1246,7 +1321,7 @@ export const FileFolderDiffComparer: React.FC = () => {
             {/* Right Pane: Diff Viewer */}
             <div className="flex-1 flex flex-col overflow-hidden">
               {/* Diff Result Sub-Header */}
-              <div className="flex flex-wrap items-center justify-between px-3.5 py-2 bg-slate-50 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 text-xs">
+              <div className="flex flex-wrap items-center justify-between px-3.5 py-2 bg-slate-50 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 text-xs shrink-0">
                 <div className="flex items-center gap-3">
                   <span className="font-semibold text-slate-800 dark:text-slate-200">
                     {mode === "file"
@@ -1259,272 +1334,355 @@ export const FileFolderDiffComparer: React.FC = () => {
                   </span>
 
                   {/* Legend Badges */}
-                  <div className="hidden sm:flex items-center gap-2 text-[11px]">
-                    <span className="flex items-center gap-1 text-slate-600 dark:text-slate-400">
-                      <span className="inline-block w-2.5 h-2.5 rounded-xs bg-[#fee2e2] border border-[#fca5a5]" />
-                      {t.diff.original}
-                    </span>
-                    <span className="flex items-center gap-1 text-slate-600 dark:text-slate-400">
-                      <span className="inline-block w-2.5 h-2.5 rounded-xs bg-[#ccfbf1] border border-[#99f6e4]" />
-                      {t.diff.modified}
-                    </span>
-                    <span className="flex items-center gap-1 text-slate-600 dark:text-slate-400">
-                      <span className="inline-block w-2.5 h-2.5 rounded-xs bg-[repeating-linear-gradient(-45deg,transparent,transparent_2px,rgba(148,163,184,0.5)_2px,rgba(148,163,184,0.5)_4px)] border border-slate-300 dark:border-slate-600" />
-                      {t.diff.spacer}
-                    </span>
-                  </div>
+                  {!isBinaryComparison && (
+                    <div className="hidden sm:flex items-center gap-2 text-[11px]">
+                      <span className="flex items-center gap-1 text-slate-600 dark:text-slate-400">
+                        <span className="inline-block w-2.5 h-2.5 rounded-xs bg-[#fee2e2] border border-[#fca5a5]" />
+                        {t.diff.original}
+                      </span>
+                      <span className="flex items-center gap-1 text-slate-600 dark:text-slate-400">
+                        <span className="inline-block w-2.5 h-2.5 rounded-xs bg-[#ccfbf1] border border-[#99f6e4]" />
+                        {t.diff.modified}
+                      </span>
+                      <span className="flex items-center gap-1 text-slate-600 dark:text-slate-400">
+                        <span className="inline-block w-2.5 h-2.5 rounded-xs bg-[repeating-linear-gradient(-45deg,transparent,transparent_2px,rgba(148,163,184,0.5)_2px,rgba(148,163,184,0.5)_4px)] border border-slate-300 dark:border-slate-600" />
+                        {t.diff.spacer}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-2">
+                  {!isBinaryComparison && totalItems > 0 && (
+                    <span
+                      className={`px-2 py-0.5 rounded text-[11px] font-mono font-medium border ${
+                        totalDifferences > 0
+                          ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30"
+                          : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                      }`}
+                    >
+                      {totalDifferences > 0
+                        ? `${totalDifferences} ${t.diff.differencesCount}`
+                        : t.diff.allMatching}
+                    </span>
+                  )}
                   <span className="text-[11px] text-slate-400 font-mono">
-                    {alignedRows.length} {t.common.lines}
+                    {isBinaryComparison
+                      ? "Tệp nhị phân"
+                      : `${totalItems} ${t.common.lines}`}
                   </span>
                 </div>
               </div>
 
-              {/* Empty / Prompt State */}
-              {alignedRows.length === 0 ? (
+              {/* BINARY FILE DIFF CARD */}
+              {isBinaryComparison && (currentItemA || currentItemB) ? (
+                <div className="flex-1 flex flex-col items-center justify-center p-8 bg-slate-50/50 dark:bg-slate-900/50 text-center">
+                  <div className="w-14 h-14 rounded-2xl bg-amber-50 dark:bg-amber-950/70 border border-amber-200 dark:border-amber-800 flex items-center justify-center text-amber-600 mb-3 shadow-sm">
+                    <Binary className="w-7 h-7" />
+                  </div>
+                  <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                    So sánh Tệp Nhị phân (Binary Files)
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md">
+                    Tệp nhị phân (hình ảnh, tài liệu nén, tệp thực thi, media) không thể hiển thị khác biệt theo từng dòng văn bản.
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-4 mt-6 w-full max-w-lg">
+                    <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-850 text-left">
+                      <div className="text-[10px] font-semibold text-slate-400 uppercase">{t.diff.fileA}</div>
+                      <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate mt-0.5">
+                        {currentItemA?.name || "Không có tệp"}
+                      </div>
+                      <div className="text-xs font-mono text-slate-500 mt-1">
+                        {currentItemA ? formatFileSize(currentItemA.size) : "-"}
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-850 text-left">
+                      <div className="text-[10px] font-semibold text-slate-400 uppercase">{t.diff.fileB}</div>
+                      <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate mt-0.5">
+                        {currentItemB?.name || "Không có tệp"}
+                      </div>
+                      <div className="text-xs font-mono text-slate-500 mt-1">
+                        {currentItemB ? formatFileSize(currentItemB.size) : "-"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4">
+                    {currentItemA && currentItemB && currentItemA.size === currentItemB.size ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        Kích thước tệp giống nhau ({formatFileSize(currentItemA.size)})
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        Kích thước tệp khác nhau (Đã sửa đổi)
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ) : totalItems === 0 ? (
+                /* Empty / Prompt State */
                 <div className="flex flex-col items-center justify-center flex-1 p-8 text-center text-slate-400">
                   <FileDiff className="w-10 h-10 mb-2 text-slate-300 dark:text-slate-600" />
                   <p className="text-sm font-medium">{t.diff.noData}</p>
                   <p className="text-xs text-slate-400 mt-1 max-w-md">
                     {mode === "file"
-                      ? (language === "vi" ? "Hãy chọn hoặc kéo thả 2 file vào 2 ô phía trên để bắt đầu đối chiếu sai khác" : "Select or drag & drop 2 files into the cards above to compare")
-                      : (language === "vi" ? "Hãy chọn 2 thư mục và bấm vào một tệp tin ở danh sách bên trái" : "Select 2 folders and click a file on the left to inspect differences")}
+                      ? language === "vi"
+                        ? "Hãy chọn hoặc kéo thả 2 file vào 2 ô phía trên để bắt đầu đối chiếu sai khác"
+                        : "Select or drag & drop 2 files into the cards above to compare"
+                      : language === "vi"
+                        ? "Hãy chọn 2 thư mục và bấm vào một tệp tin ở danh sách bên trái"
+                        : "Select 2 folders and click a file on the left to inspect differences"}
                   </p>
                 </div>
-              ) : viewMode === "split" ? (
-                /* ========================================================= */
-                /* VIEW A: SIDE-BY-SIDE (SONG SONG) VIEW                     */
-                /* ========================================================= */
-                <div className="flex flex-1 overflow-hidden">
-                  <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-slate-300/80 dark:divide-slate-800 flex-1 overflow-hidden">
-                    {/* Left Column: Original */}
-                    <div className="flex flex-col h-full overflow-hidden">
-                      <div className="px-3 py-1.5 bg-slate-100/70 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider select-none truncate">
-                        GỐC: {activeLabelA}
-                      </div>
-                      <div
-                        ref={leftScrollRef}
-                        onScroll={() => handleScroll("left")}
-                        className="flex-1 overflow-auto font-mono text-xs leading-6 py-1 bg-white dark:bg-slate-900"
-                      >
-                        {alignedRows.map((row, idx) => {
-                          const hasLeftNumber = row.left.lineNum !== undefined;
-                          const isPureDel = !row.left.isSpacer && row.right.isSpacer;
-                          const isMod = !row.left.isSpacer && !row.right.isSpacer && row.isChanged;
-                          const isCurrentActive = idx === currentDiffIndex;
-
-                          let gutterBg = "text-slate-400 dark:text-slate-500 font-normal";
-                          let rowBg = "hover:bg-slate-50/70 dark:hover:bg-slate-800/40";
-
-                          if (isPureDel) {
-                            gutterBg = "bg-[#fca5a5] text-[#7f1d1d] dark:bg-rose-700 dark:text-rose-100 font-semibold";
-                            rowBg = "bg-[#fca5a5]/80 text-[#4c0519] dark:bg-rose-900/60 dark:text-rose-100 font-medium";
-                          } else if (isMod) {
-                            gutterBg = "bg-[#fee2e2] text-[#991b1b] dark:bg-rose-950 dark:text-rose-300 font-semibold";
-                            rowBg = "bg-[#fee2e2]/60 dark:bg-rose-950/20";
-                          }
-
-                          return (
-                            <div
-                              key={idx}
-                              id={`diff-row-${idx}`}
-                              className={`flex items-center min-h-[24px] ${
-                                isCurrentActive ? "ring-2 ring-indigo-500 z-10" : ""
-                              } ${row.left.isSpacer ? "bg-transparent" : rowBg}`}
-                            >
-                              {/* Gutter Line Number */}
-                              <div
-                                className={`w-9 h-6 flex items-center justify-end pr-2 text-[11px] select-none shrink-0 border-r border-slate-200/80 dark:border-slate-800 ${
-                                  row.left.isSpacer ? "" : gutterBg
-                                }`}
-                              >
-                                {hasLeftNumber ? row.left.lineNum : ""}
-                              </div>
-
-                              {/* Content or Diagonal Striped Spacer */}
-                              {row.left.isSpacer ? (
-                                <div className="flex-1 min-h-[24px] h-6 bg-[repeating-linear-gradient(-45deg,transparent,transparent_5px,rgba(203,213,225,0.4)_5px,rgba(203,213,225,0.4)_10px)] dark:bg-[repeating-linear-gradient(-45deg,transparent,transparent_5px,rgba(51,65,85,0.35)_5px,rgba(51,65,85,0.35)_10px)] select-none opacity-85" />
-                              ) : (
-                                <div className="flex-1 px-3 whitespace-pre select-text overflow-visible text-slate-900 dark:text-slate-100">
-                                  {isPureDel
-                                    ? row.left.text
-                                    : renderSegments(row.left.segments, false, "left", isMod, row.left.text)}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Right Column: Modified */}
-                    <div className="flex flex-col h-full overflow-hidden">
-                      <div className="px-3 py-1.5 bg-slate-100/70 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider select-none truncate">
-                        ĐÃ SỬA: {activeLabelB}
-                      </div>
-                      <div
-                        ref={rightScrollRef}
-                        onScroll={() => handleScroll("right")}
-                        className="flex-1 overflow-auto font-mono text-xs leading-6 py-1 bg-white dark:bg-slate-900"
-                      >
-                        {alignedRows.map((row, idx) => {
-                          const hasRightNumber = row.right.lineNum !== undefined;
-                          const isPureAdd = row.left.isSpacer && !row.right.isSpacer;
-                          const isMod = !row.left.isSpacer && !row.right.isSpacer && row.isChanged;
-                          const isCurrentActive = idx === currentDiffIndex;
-
-                          let gutterBg = "text-slate-400 dark:text-slate-500 font-normal";
-                          let rowBg = "hover:bg-slate-50/70 dark:hover:bg-slate-800/40";
-
-                          if (isPureAdd) {
-                            gutterBg = "bg-[#5eead4] text-[#134e4a] dark:bg-teal-700 dark:text-teal-100 font-semibold";
-                            rowBg = "bg-[#5eead4]/80 text-[#042f2e] dark:bg-teal-900/60 dark:text-teal-100 font-medium";
-                          } else if (isMod) {
-                            gutterBg = "bg-[#ccfbf1] text-[#0f766e] dark:bg-teal-950 dark:text-teal-300 font-semibold";
-                            rowBg = "bg-[#ccfbf1]/50 dark:bg-teal-950/20";
-                          }
-
-                          return (
-                            <div
-                              key={idx}
-                              className={`flex items-center min-h-[24px] ${
-                                isCurrentActive ? "ring-2 ring-indigo-500 z-10" : ""
-                              } ${row.right.isSpacer ? "bg-transparent" : rowBg}`}
-                            >
-                              {/* Gutter Line Number */}
-                              <div
-                                className={`w-9 h-6 flex items-center justify-end pr-2 text-[11px] select-none shrink-0 border-r border-slate-200/80 dark:border-slate-800 ${
-                                  row.right.isSpacer ? "" : gutterBg
-                                }`}
-                              >
-                                {hasRightNumber ? row.right.lineNum : ""}
-                              </div>
-
-                              {/* Content or Diagonal Striped Spacer */}
-                              {row.right.isSpacer ? (
-                                <div className="flex-1 min-h-[24px] h-6 bg-[repeating-linear-gradient(-45deg,transparent,transparent_5px,rgba(203,213,225,0.4)_5px,rgba(203,213,225,0.4)_10px)] dark:bg-[repeating-linear-gradient(-45deg,transparent,transparent_5px,rgba(51,65,85,0.35)_5px,rgba(51,65,85,0.35)_10px)] select-none opacity-85" />
-                              ) : (
-                                <div className="flex-1 px-3 whitespace-pre select-text overflow-visible text-slate-900 dark:text-slate-100">
-                                  {isPureAdd
-                                    ? row.right.text
-                                    : renderSegments(row.right.segments, false, "right", isMod, row.right.text)}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Rightmost Overview Minimap Strip */}
-                  <div className="w-3.5 shrink-0 bg-slate-100/60 dark:bg-slate-850/60 border-l border-slate-200 dark:border-slate-800 flex flex-col py-1 select-none">
-                    {alignedRows.map((r, i) => {
-                      const isDel = r.isChanged && !r.left.isSpacer && r.right.isSpacer;
-                      const isAdd = r.isChanged && r.left.isSpacer && !r.right.isSpacer;
-                      const isMod = r.isChanged && !r.left.isSpacer && !r.right.isSpacer;
-
-                      return (
-                        <div
-                          key={i}
-                          onClick={() => {
-                            setCurrentDiffIndex(i);
-                            document.getElementById(`diff-row-${i}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
-                          }}
-                          className="w-full min-h-[3px] flex-1 flex cursor-pointer"
-                        >
-                          {isMod ? (
-                            <>
-                              <div className="w-1/2 h-full bg-[#f87171]" />
-                              <div className="w-1/2 h-full bg-[#2dd4bf]" />
-                            </>
-                          ) : isDel ? (
-                            <div className="w-full h-full bg-[#f87171]" />
-                          ) : isAdd ? (
-                            <div className="w-full h-full bg-[#2dd4bf]" />
-                          ) : (
-                            <div className="w-full h-full bg-transparent" />
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
               ) : (
-                /* ========================================================= */
-                /* VIEW B: UNIFIED (TỔNG HỢP) VIEW                           */
-                /* ========================================================= */
+                /* VIRTUALIZED TEXT DIFF VIEWER WITH CANVAS MINIMAP */
                 <div
-                  ref={unifiedScrollRef}
-                  className="flex-1 overflow-auto font-mono text-xs leading-6 py-1 bg-white dark:bg-slate-900"
+                  ref={viewportContainerRef}
+                  className="flex flex-1 overflow-hidden relative"
                 >
-                  {alignedRows.map((row, idx) => {
-                    if (!row.isChanged) {
-                      return (
+                  <div className="flex flex-col flex-1 overflow-hidden">
+                    {/* Split Column Headers */}
+                    {viewMode === "split" && (
+                      <div className="grid grid-cols-2 divide-x divide-slate-300/80 dark:divide-slate-800 shrink-0 border-b border-slate-200 dark:border-slate-800 select-none">
+                        <div className="px-3 py-1 bg-slate-100/70 dark:bg-slate-800/60 text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider truncate">
+                          GỐC: {activeLabelA}
+                        </div>
+                        <div className="px-3 py-1 bg-slate-100/70 dark:bg-slate-800/60 text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider truncate">
+                          ĐÃ SỬA: {activeLabelB}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Content Viewport */}
+                    {viewMode === "split" ? (
+                      /* A. SIDE-BY-SIDE SYNCHRONIZED SPLIT PANES */
+                      <div className="flex flex-1 h-full overflow-hidden divide-x divide-slate-300/80 dark:divide-slate-800">
+                        {/* Left Scroll Pane (Original) */}
                         <div
-                          key={idx}
-                          id={`diff-row-${idx}`}
-                          className="flex items-center min-h-[24px] hover:bg-slate-50/70 dark:hover:bg-slate-800/40 text-slate-800 dark:text-slate-200"
+                          ref={leftScrollRef}
+                          onScroll={handleLeftScroll}
+                          onWheel={(e) => {
+                            if (rightScrollRef.current && e.deltaY) {
+                              rightScrollRef.current.scrollTop += e.deltaY;
+                            }
+                          }}
+                          className="flex-1 h-full overflow-x-auto overflow-y-hidden font-mono text-xs leading-6 bg-white dark:bg-slate-900 select-text"
                         >
-                          <div className="w-10 h-6 flex items-center justify-end pr-2 text-[11px] text-slate-400 select-none border-r border-slate-200 dark:border-slate-800">
-                            {row.left.lineNum}
-                          </div>
-                          <div className="w-10 h-6 flex items-center justify-end pr-2 text-[11px] text-slate-400 select-none border-r border-slate-200 dark:border-slate-800">
-                            {row.right.lineNum}
-                          </div>
-                          <div className="w-6 h-6 flex items-center justify-center text-slate-400 select-none font-bold">
-                            {" "}
-                          </div>
-                          <div className="flex-1 px-2 whitespace-pre overflow-visible">
-                            {row.left.text}
+                          <div style={{ minWidth: maxSplitCharCount > 0 ? `max(100%, ${maxSplitCharCount + 12}ch)` : "100%" }}>
+                            {/* Top Virtual Spacer */}
+                            <div style={{ height: topPadding }} />
+
+                            {/* Left Rows */}
+                            {visibleSplitRows.map((row, index) => {
+                              const idx = startIndex + index;
+                              const hasLeftNumber = row.left.lineNum !== undefined;
+                              const isPureDel = !row.left.isSpacer && row.right.isSpacer;
+                              const isMod = !row.left.isSpacer && !row.right.isSpacer && row.isChanged;
+                              const isCurrentActive = idx === currentDiffIndex;
+
+                              let leftGutter = "text-slate-400 dark:text-slate-500 font-normal bg-slate-50/90 dark:bg-slate-850/90";
+                              let leftBg = "hover:bg-slate-50/70 dark:hover:bg-slate-800/40";
+                              if (isPureDel) {
+                                leftGutter = "bg-[#fca5a5] text-[#7f1d1d] dark:bg-rose-700 dark:text-rose-100 font-semibold";
+                                leftBg = "bg-[#fca5a5]/80 text-[#4c0519] dark:bg-rose-900/60 dark:text-rose-100 font-medium";
+                              } else if (isMod) {
+                                leftGutter = "bg-[#fee2e2] text-[#991b1b] dark:bg-rose-950 dark:text-rose-300 font-semibold";
+                                leftBg = "bg-[#fee2e2]/60 dark:bg-rose-950/20";
+                              }
+
+                              return (
+                                <div
+                                  key={idx}
+                                  className={`flex h-6 min-h-[24px] w-full ${row.left.isSpacer ? "bg-transparent" : leftBg} ${
+                                    isCurrentActive ? "ring-2 ring-indigo-500 z-10" : ""
+                                  }`}
+                                >
+                                  {/* Sticky Line Number Gutter */}
+                                  <div
+                                    className={`w-10 h-6 sticky left-0 z-10 flex items-center justify-end pr-2 text-[11px] select-none shrink-0 border-r border-slate-200/80 dark:border-slate-800 shadow-[1px_0_0_0_rgba(0,0,0,0.05)] dark:shadow-[1px_0_0_0_rgba(255,255,255,0.05)] ${
+                                      row.left.isSpacer ? "bg-white dark:bg-slate-900 text-transparent" : leftGutter
+                                    }`}
+                                  >
+                                    {hasLeftNumber ? row.left.lineNum : ""}
+                                  </div>
+
+                                  {/* Code text or spacer */}
+                                  {row.left.isSpacer ? (
+                                    <div className="flex-1 h-6 bg-[repeating-linear-gradient(-45deg,transparent,transparent_5px,rgba(203,213,225,0.4)_5px,rgba(203,213,225,0.4)_10px)] dark:bg-[repeating-linear-gradient(-45deg,transparent,transparent_5px,rgba(51,65,85,0.35)_5px,rgba(51,65,85,0.35)_10px)] select-none opacity-85" />
+                                  ) : (
+                                    <div className="px-3 whitespace-pre text-slate-900 dark:text-slate-100 flex items-center h-6">
+                                      {isPureDel
+                                        ? row.left.text
+                                        : renderSegments(row.left.segments, false, "left", isMod, row.left.text)}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+
+                            {/* Bottom Virtual Spacer */}
+                            <div style={{ height: bottomPadding }} />
                           </div>
                         </div>
-                      );
-                    }
 
-                    return (
-                      <React.Fragment key={idx}>
-                        {!row.left.isSpacer && (
-                          <div
-                            id={`diff-row-${idx}`}
-                            className="flex items-center min-h-[24px] bg-[#fee2e2]/60 dark:bg-rose-950/30 text-[#4c0519] dark:text-rose-100"
-                          >
-                            <div className="w-10 h-6 flex items-center justify-end pr-2 text-[11px] bg-[#fca5a5] text-[#7f1d1d] font-semibold select-none border-r border-slate-200 dark:border-slate-800">
-                              {row.left.lineNum}
-                            </div>
-                            <div className="w-10 h-6 flex items-center justify-end pr-2 text-[11px] bg-[#fee2e2] text-slate-400 select-none border-r border-slate-200 dark:border-slate-800">
-                              {" "}
-                            </div>
-                            <div className="w-6 h-6 flex items-center justify-center text-rose-600 font-bold select-none">
-                              -
-                            </div>
-                            <div className="flex-1 px-2 whitespace-pre overflow-visible">
-                              {renderSegments(row.left.segments, false, "left", true, row.left.text)}
-                            </div>
-                          </div>
-                        )}
+                        {/* Right Scroll Pane (Modified) */}
+                        <div
+                          ref={rightScrollRef}
+                          onScroll={handleRightScroll}
+                          className="flex-1 h-full overflow-x-auto overflow-y-auto font-mono text-xs leading-6 bg-white dark:bg-slate-900 select-text"
+                        >
+                          <div style={{ minWidth: maxSplitCharCount > 0 ? `max(100%, ${maxSplitCharCount + 12}ch)` : "100%" }}>
+                            {/* Top Virtual Spacer */}
+                            <div style={{ height: topPadding }} />
 
-                        {!row.right.isSpacer && (
-                          <div className="flex items-center min-h-[24px] bg-[#ccfbf1]/50 dark:bg-teal-950/30 text-[#042f2e] dark:text-teal-100">
-                            <div className="w-10 h-6 flex items-center justify-end pr-2 text-[11px] bg-[#ccfbf1] text-slate-400 select-none border-r border-slate-200 dark:border-slate-800">
-                              {" "}
-                            </div>
-                            <div className="w-10 h-6 flex items-center justify-end pr-2 text-[11px] bg-[#5eead4] text-[#134e4a] font-semibold select-none border-r border-slate-200 dark:border-slate-800">
-                              {row.right.lineNum}
-                            </div>
-                            <div className="w-6 h-6 flex items-center justify-center text-teal-600 font-bold select-none">
-                              +
-                            </div>
-                            <div className="flex-1 px-2 whitespace-pre overflow-visible">
-                              {renderSegments(row.right.segments, false, "right", true, row.right.text)}
-                            </div>
+                            {/* Right Rows */}
+                            {visibleSplitRows.map((row, index) => {
+                              const idx = startIndex + index;
+                              const hasRightNumber = row.right.lineNum !== undefined;
+                              const isPureAdd = row.left.isSpacer && !row.right.isSpacer;
+                              const isMod = !row.left.isSpacer && !row.right.isSpacer && row.isChanged;
+                              const isCurrentActive = idx === currentDiffIndex;
+
+                              let rightGutter = "text-slate-400 dark:text-slate-500 font-normal bg-slate-50/90 dark:bg-slate-850/90";
+                              let rightBg = "hover:bg-slate-50/70 dark:hover:bg-slate-800/40";
+                              if (isPureAdd) {
+                                rightGutter = "bg-[#5eead4] text-[#134e4a] dark:bg-teal-700 dark:text-teal-100 font-semibold";
+                                rightBg = "bg-[#5eead4]/80 text-[#042f2e] dark:bg-teal-900/60 dark:text-teal-100 font-medium";
+                              } else if (isMod) {
+                                rightGutter = "bg-[#ccfbf1] text-[#0f766e] dark:bg-teal-950 dark:text-teal-300 font-semibold";
+                                rightBg = "bg-[#ccfbf1]/50 dark:bg-teal-950/20";
+                              }
+
+                              return (
+                                <div
+                                  key={idx}
+                                  className={`flex h-6 min-h-[24px] w-full ${row.right.isSpacer ? "bg-transparent" : rightBg} ${
+                                    isCurrentActive ? "ring-2 ring-indigo-500 z-10" : ""
+                                  }`}
+                                >
+                                  {/* Sticky Line Number Gutter */}
+                                  <div
+                                    className={`w-10 h-6 sticky left-0 z-10 flex items-center justify-end pr-2 text-[11px] select-none shrink-0 border-r border-slate-200/80 dark:border-slate-800 shadow-[1px_0_0_0_rgba(0,0,0,0.05)] dark:shadow-[1px_0_0_0_rgba(255,255,255,0.05)] ${
+                                      row.right.isSpacer ? "bg-white dark:bg-slate-900 text-transparent" : rightGutter
+                                    }`}
+                                  >
+                                    {hasRightNumber ? row.right.lineNum : ""}
+                                  </div>
+
+                                  {/* Code text or spacer */}
+                                  {row.right.isSpacer ? (
+                                    <div className="flex-1 h-6 bg-[repeating-linear-gradient(-45deg,transparent,transparent_5px,rgba(203,213,225,0.4)_5px,rgba(203,213,225,0.4)_10px)] dark:bg-[repeating-linear-gradient(-45deg,transparent,transparent_5px,rgba(51,65,85,0.35)_5px,rgba(51,65,85,0.35)_10px)] select-none opacity-85" />
+                                  ) : (
+                                    <div className="px-3 whitespace-pre text-slate-900 dark:text-slate-100 flex items-center h-6">
+                                      {isPureAdd
+                                        ? row.right.text
+                                        : renderSegments(row.right.segments, false, "right", isMod, row.right.text)}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+
+                            {/* Bottom Virtual Spacer */}
+                            <div style={{ height: bottomPadding }} />
                           </div>
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
+                        </div>
+                      </div>
+                    ) : (
+                      /* B. UNIFIED VIRTUAL ROWS */
+                      <div
+                        ref={unifiedScrollRef}
+                        onScroll={handleUnifiedScroll}
+                        className="flex-1 h-full overflow-x-auto overflow-y-auto font-mono text-xs leading-6 bg-white dark:bg-slate-900 select-text"
+                      >
+                        <div style={{ minWidth: maxUnifiedCharCount > 0 ? `max(100%, ${maxUnifiedCharCount + 20}ch)` : "100%" }}>
+                          {/* Top Virtual Spacer */}
+                          <div style={{ height: topPadding }} />
+
+                          {/* Unified Rows */}
+                          {visibleUnifiedLines.map((line, index) => {
+                            const idx = startIndex + index;
+                            const isDel = line.type === "delete";
+                            const isAdd = line.type === "insert";
+
+                            let rowBg = "hover:bg-slate-50/70 dark:hover:bg-slate-800/40";
+                            let leftGutterBg = "bg-slate-50/90 dark:bg-slate-850/90 text-slate-400 dark:text-slate-500";
+                            let rightGutterBg = "bg-slate-50/90 dark:bg-slate-850/90 text-slate-400 dark:text-slate-500 border-r border-slate-200 dark:border-slate-800";
+                            let markerBg = "bg-slate-50/90 dark:bg-slate-850/90 text-slate-300 dark:text-slate-600";
+                            let textColor = "text-slate-800 dark:text-slate-200";
+
+                            if (isDel) {
+                              rowBg = "bg-[#fee2e2]/60 dark:bg-rose-950/20 hover:bg-[#fee2e2]/80 dark:hover:bg-rose-950/30 transition-colors";
+                              leftGutterBg = "bg-[#fee2e2] text-[#991b1b] dark:bg-rose-900/40 dark:text-rose-300 font-semibold";
+                              rightGutterBg = "bg-[#fee2e2] text-slate-400 dark:text-slate-600 border-r border-rose-200 dark:border-rose-900/40";
+                              markerBg = "bg-[#fee2e2] text-rose-600 dark:text-rose-400 font-bold";
+                              textColor = "text-[#991b1b] dark:text-rose-100";
+                            } else if (isAdd) {
+                              rowBg = "bg-[#ccfbf1]/50 dark:bg-teal-950/20 hover:bg-[#ccfbf1]/70 dark:hover:bg-teal-950/30 transition-colors";
+                              leftGutterBg = "bg-[#ccfbf1] text-slate-400 dark:text-slate-600";
+                              rightGutterBg = "bg-[#ccfbf1] text-[#0f766e] dark:bg-teal-900/40 dark:text-teal-300 font-semibold border-r border-teal-200 dark:border-teal-900/40";
+                              markerBg = "bg-[#ccfbf1] text-teal-600 dark:text-teal-400 font-bold";
+                              textColor = "text-[#0f766e] dark:text-teal-100";
+                            }
+
+                            return (
+                              <div
+                                key={idx}
+                                className={`flex items-center h-6 min-h-[24px] w-full ${rowBg}`}
+                              >
+                                {/* Sticky Left Line Number */}
+                                <div
+                                  className={`w-10 h-6 sticky left-0 z-10 flex items-center justify-end pr-2 text-[11px] select-none shrink-0 ${leftGutterBg}`}
+                                >
+                                  {line.leftLineNum ?? ""}
+                                </div>
+
+                                {/* Sticky Right Line Number */}
+                                <div
+                                  className={`w-10 h-6 sticky left-10 z-10 flex items-center justify-end pr-2 text-[11px] select-none shrink-0 ${rightGutterBg}`}
+                                >
+                                  {line.rightLineNum ?? ""}
+                                </div>
+
+                                {/* Sticky Marker (+ / -) */}
+                                <div
+                                  className={`w-6 h-6 sticky left-20 z-10 flex items-center justify-center text-xs select-none shrink-0 border-r border-slate-200/40 dark:border-slate-800/40 ${markerBg}`}
+                                >
+                                  {isDel ? "-" : isAdd ? "+" : " "}
+                                </div>
+
+                                {/* Text content */}
+                                <div className={`px-3 whitespace-pre flex items-center h-6 ${textColor}`}>
+                                  {isDel || isAdd
+                                    ? renderSegments(line.segments, false, isDel ? "left" : "right", true, line.text)
+                                    : line.text}
+                                </div>
+                              </div>
+                            );
+                          })}
+
+                          {/* Bottom Virtual Spacer */}
+                          <div style={{ height: bottomPadding }} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Rightmost High-Performance Canvas Minimap (Overview Ruler) */}
+                  <div className="w-3.5 shrink-0 bg-slate-100/60 dark:bg-slate-850/60 border-l border-slate-200 dark:border-slate-800 flex select-none relative">
+                    <canvas
+                      ref={canvasRef}
+                      width={14}
+                      height={viewportHeight}
+                      onClick={handleMinimapClick}
+                      className="w-full h-full cursor-pointer"
+                      title={language === "vi" ? "Bấm vào minimap để cuộn nhanh đến vị trí" : "Click minimap to jump"}
+                    />
+                  </div>
                 </div>
               )}
             </div>

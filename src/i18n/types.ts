@@ -40,6 +40,8 @@ export interface TranslationSchema {
     updateDownloadedTitle: string;
     updateRestartNow: string;
     updateDismiss: string;
+    collapseSidebar: string;
+    expandSidebar: string;
   };
   theme: {
     system: string;
@@ -233,5 +235,9 @@ export interface TranslationSchema {
     deletedFilter: string;
     noData: string;
     dragDropPrompt: string;
+    fastDiffActive: string;
+    largeFileWarning: string;
+    truncatedWarning: string;
+    compareAllAnyway: string;
   };
 }

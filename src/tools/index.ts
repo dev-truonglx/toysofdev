@@ -65,6 +65,7 @@ import { FileFolderDiffComparer } from "./file-folder-diff/FileFolderDiffCompare
 import { MarkdownPreview } from "./markdown-preview/MarkdownPreview";
 import { StringEscape } from "./string-escape/StringEscape";
 import { ListComparer } from "./list-comparer/ListComparer";
+import { LogGrep } from "./log-grep/LogGrep";
 
 // Graphic & Testing (Batch E)
 import { RegexTester } from "./regex-tester/RegexTester";
@@ -355,6 +356,15 @@ export const TOOLS: ToolDefinition[] = [
     icon: ListFilter,
     keywords: ["list", "compare", "intersection", "difference", "union", "deduplicate"],
     component: ListComparer,
+  },
+  {
+    id: "log-grep",
+    title: "Log Grep & Filter",
+    description: "Filter, grep and analyze log lines using literal text or regular expressions with context lines and preset patterns",
+    category: "text",
+    icon: ListFilter,
+    keywords: ["grep", "log", "filter", "regex", "search", "trace", "error", "lines"],
+    component: LogGrep,
   },
 
   // 6. Graphic & Testing (5)
