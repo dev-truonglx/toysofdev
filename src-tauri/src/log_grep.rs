@@ -320,6 +320,7 @@ impl FileRegistry {
         cache.get(search_id).cloned()
     }
 
+    #[allow(dead_code)]
     pub fn clear_search_results(&self, search_id: &str) {
         let mut cache = self.search_results.write().unwrap();
         cache.remove(search_id);
@@ -1118,6 +1119,7 @@ pub fn search_log(
 #[tauri::command]
 pub fn cancel_search(search_id: String) -> Result<(), String> {
     FileRegistry::global().cancel_search(&search_id);
+    FileRegistry::global().clear_search_results(&search_id);
     Ok(())
 }
 

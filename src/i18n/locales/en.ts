@@ -44,7 +44,7 @@ export const en: TranslationSchema = {
     vi: "Tiếng Việt",
   },
   home: {
-    heroTitle: "Developer Swiss Army Knife",
+    heroTitle: "Toys of Dev",
     heroSubtitle:
       "A fast, modern, and strictly local-first toolbox. No cloud tracking, in-memory stateless processing, and zero network leaks.",
   },

@@ -1,12 +1,12 @@
 [package]
-name = "devtoollocal"
-version = "0.0.2"
-description = "Local-First Developer Tools (DevToys Clone)"
+name = "toysofdev"
+version = "0.1.0"
+description = "Toys of Dev - Local-First Developer Tools"
 authors = ["Antigravity"]
 edition = "2021"
 
 [lib]
-name = "devtoollocal_lib"
+name = "toysofdev_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

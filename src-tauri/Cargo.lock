@@ -890,31 +890,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "devtoollocal"
-version = "0.0.2"
-dependencies = [
- "grep-matcher",
- "grep-regex",
- "grep-searcher",
- "memchr",
- "memmap2",
- "rayon",
- "regex",
- "rfd 0.15.4",
- "serde",
- "serde_json",
- "similar",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-http",
- "tauri-plugin-process",
- "tauri-plugin-store",
- "tauri-plugin-updater",
- "uuid",
-]
-
-[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4949,6 +4924,31 @@ name = "tower-service"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8df9b6e13f2d32c91b9bd719c00d1958837bc7dec474d94952798cc8e69eeec3"
+
+[[package]]
+name = "toysofdev"
+version = "0.1.0"
+dependencies = [
+ "grep-matcher",
+ "grep-regex",
+ "grep-searcher",
+ "memchr",
+ "memmap2",
+ "rayon",
+ "regex",
+ "rfd 0.15.4",
+ "serde",
+ "serde_json",
+ "similar",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-http",
+ "tauri-plugin-process",
+ "tauri-plugin-store",
+ "tauri-plugin-updater",
+ "uuid",
+]
 
 [[package]]
 name = "tracing"
