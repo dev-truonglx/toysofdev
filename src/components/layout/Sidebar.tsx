@@ -710,7 +710,7 @@ export const Sidebar: React.FC = () => {
                 title={t.language.en}
                 className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
                   language === "en"
-                    ? "bg-white dark:bg-slate-750 text-indigo-600 dark:text-indigo-400 shadow-sm"
+                    ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm"
                     : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
                 }`}
               >
@@ -721,7 +721,7 @@ export const Sidebar: React.FC = () => {
                 title={t.language.vi}
                 className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
                   language === "vi"
-                    ? "bg-white dark:bg-slate-750 text-indigo-600 dark:text-indigo-400 shadow-sm"
+                    ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm"
                     : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
                 }`}
               >
@@ -736,7 +736,7 @@ export const Sidebar: React.FC = () => {
                 title={t.theme.system}
                 className={`p-1.5 rounded-md text-xs transition-all cursor-pointer ${
                   themeMode === "system"
-                    ? "bg-white dark:bg-slate-750 text-indigo-600 dark:text-indigo-400 shadow-sm"
+                    ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm"
                     : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
                 }`}
               >
@@ -747,7 +747,7 @@ export const Sidebar: React.FC = () => {
                 title={t.theme.light}
                 className={`p-1.5 rounded-md text-xs transition-all cursor-pointer ${
                   themeMode === "light"
-                    ? "bg-white dark:bg-slate-750 text-amber-500 shadow-sm"
+                    ? "bg-white dark:bg-slate-700 text-amber-500 shadow-sm"
                     : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
                 }`}
               >

@@ -69,13 +69,13 @@ export const ColorPickerTool: React.FC = () => {
                   type="color"
                   value={fgColor}
                   onChange={(e) => setFgColor(e.target.value)}
-                  className="w-12 h-10 rounded-xl cursor-pointer border border-slate-300 dark:border-slate-700 p-1 bg-white"
+                  className="w-12 h-10 rounded-xl cursor-pointer border border-slate-300 dark:border-slate-700 p-1 bg-white dark:bg-slate-800"
                 />
                 <input
                   type="text"
                   value={fgColor}
                   onChange={(e) => setFgColor(e.target.value)}
-                  className="flex-1 px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 font-mono text-xs focus:ring-2 focus:ring-indigo-500"
+                  className="flex-1 px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-mono text-xs focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
             </div>
@@ -89,13 +89,13 @@ export const ColorPickerTool: React.FC = () => {
                   type="color"
                   value={bgColor}
                   onChange={(e) => setBgColor(e.target.value)}
-                  className="w-12 h-10 rounded-xl cursor-pointer border border-slate-300 dark:border-slate-700 p-1 bg-white"
+                  className="w-12 h-10 rounded-xl cursor-pointer border border-slate-300 dark:border-slate-700 p-1 bg-white dark:bg-slate-800"
                 />
                 <input
                   type="text"
                   value={bgColor}
                   onChange={(e) => setBgColor(e.target.value)}
-                  className="flex-1 px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 font-mono text-xs focus:ring-2 focus:ring-indigo-500"
+                  className="flex-1 px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-mono text-xs focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
               <div className="text-[11px] text-slate-400 font-mono">

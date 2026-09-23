@@ -115,7 +115,7 @@ export const JsonCsvConverter: React.FC = () => {
       <button
         onClick={handleDownload}
         disabled={!output}
-        className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-750 transition-colors disabled:opacity-40"
+        className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-40"
       >
         <Download className="w-3.5 h-3.5" />
         <span>{t.ui.download} CSV</span>

@@ -735,12 +735,12 @@ export const FileFolderDiffComparer: React.FC = () => {
     segments: DiffSegment[],
     isSpacer: boolean,
     side: "left" | "right",
-    isChanged: boolean,
+    _isChanged: boolean,
     fallbackText?: string,
   ) => {
     if (isSpacer) return <span className="opacity-0 select-none">{" "}</span>;
     if (!segments || segments.length === 0) {
-      return <span>{fallbackText || " "}</span>;
+      return <span className="text-slate-800 dark:text-slate-200">{fallbackText || " "}</span>;
     }
 
     return segments.map((seg, idx) => {
@@ -749,7 +749,7 @@ export const FileFolderDiffComparer: React.FC = () => {
           return (
             <span
               key={idx}
-              className="bg-[#fca5a5] text-[#7f1d1d] dark:bg-rose-900/90 dark:text-rose-100 font-medium px-0.5 rounded-xs"
+              className="bg-rose-200/90 text-rose-950 dark:bg-rose-500/35 dark:text-rose-100 font-semibold px-0.5 rounded-xs border border-rose-300 dark:border-rose-400/60 shadow-xs"
             >
               {seg.text}
             </span>
@@ -758,7 +758,7 @@ export const FileFolderDiffComparer: React.FC = () => {
           return (
             <span
               key={idx}
-              className="bg-[#99f6e4] text-[#115e59] dark:bg-teal-900/90 dark:text-teal-100 font-medium px-0.5 rounded-xs"
+              className="bg-teal-200/90 text-teal-950 dark:bg-teal-500/35 dark:text-teal-100 font-semibold px-0.5 rounded-xs border border-teal-300 dark:border-teal-400/60 shadow-xs"
             >
               {seg.text}
             </span>
@@ -766,18 +766,12 @@ export const FileFolderDiffComparer: React.FC = () => {
         }
       }
 
-      if (isChanged) {
-        return (
-          <span
-            key={idx}
-            className={side === "left" ? "text-[#991b1b] dark:text-rose-200" : "text-[#0f766e] dark:text-teal-200"}
-          >
-            {seg.text}
-          </span>
-        );
-      }
-
-      return <span key={idx}>{seg.text}</span>;
+      // Unchanged text: Keep clear readable neutral color, do NOT turn all text red or green!
+      return (
+        <span key={idx} className="text-slate-800 dark:text-slate-100">
+          {seg.text}
+        </span>
+      );
     });
   };
 
@@ -996,7 +990,12 @@ export const FileFolderDiffComparer: React.FC = () => {
               <div
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => handleFileDropOnCard(e, "left")}
-                className="flex flex-col rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden transition-all"
+                onClick={!fileA ? () => fileAInputRef.current?.click() : undefined}
+                className={`flex flex-col rounded-xl transition-all ${
+                  fileA
+                    ? "border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden"
+                    : "border-2 border-dashed border-slate-300 dark:border-slate-700/80 hover:border-indigo-400 dark:hover:border-indigo-500 cursor-pointer bg-slate-50/60 dark:bg-slate-900/60 hover:bg-slate-100/60 dark:hover:bg-slate-800/60 p-4 items-center justify-center text-center group shadow-xs"
+                }`}
               >
                 {fileA ? (
                   <div className="p-3 flex items-center justify-between">
@@ -1044,18 +1043,15 @@ export const FileFolderDiffComparer: React.FC = () => {
                     </div>
                   </div>
                 ) : (
-                  <div
-                    onClick={() => fileAInputRef.current?.click()}
-                    className="p-4 flex flex-col items-center justify-center border-2 border-dashed border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-600 rounded-xl cursor-pointer bg-slate-50/50 dark:bg-slate-850/50 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all text-center group"
-                  >
-                    <UploadCloud className="w-6 h-6 text-slate-400 group-hover:text-indigo-500 transition-colors mb-1.5" />
-                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <>
+                    <UploadCloud className="w-6 h-6 text-slate-400 dark:text-slate-500 group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-colors mb-1.5" />
+                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
                       Chọn File Gốc (A)
                     </span>
-                    <span className="text-[11px] text-slate-400 mt-0.5">
+                    <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
                       Kéo thả tệp tin vào đây hoặc bấm để duyệt
                     </span>
-                  </div>
+                  </>
                 )}
               </div>
 
@@ -1063,7 +1059,12 @@ export const FileFolderDiffComparer: React.FC = () => {
               <div
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => handleFileDropOnCard(e, "right")}
-                className="flex flex-col rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden transition-all"
+                onClick={!fileB ? () => fileBInputRef.current?.click() : undefined}
+                className={`flex flex-col rounded-xl transition-all ${
+                  fileB
+                    ? "border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden"
+                    : "border-2 border-dashed border-slate-300 dark:border-slate-700/80 hover:border-teal-400 dark:hover:border-teal-500 cursor-pointer bg-slate-50/60 dark:bg-slate-900/60 hover:bg-slate-100/60 dark:hover:bg-slate-800/60 p-4 items-center justify-center text-center group shadow-xs"
+                }`}
               >
                 {fileB ? (
                   <div className="p-3 flex items-center justify-between">
@@ -1111,18 +1112,15 @@ export const FileFolderDiffComparer: React.FC = () => {
                     </div>
                   </div>
                 ) : (
-                  <div
-                    onClick={() => fileBInputRef.current?.click()}
-                    className="p-4 flex flex-col items-center justify-center border-2 border-dashed border-slate-200 dark:border-slate-800 hover:border-teal-400 dark:hover:border-teal-600 rounded-xl cursor-pointer bg-slate-50/50 dark:bg-slate-850/50 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all text-center group"
-                  >
-                    <UploadCloud className="w-6 h-6 text-slate-400 group-hover:text-teal-500 transition-colors mb-1.5" />
-                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <>
+                    <UploadCloud className="w-6 h-6 text-slate-400 dark:text-slate-500 group-hover:text-teal-500 dark:group-hover:text-teal-400 transition-colors mb-1.5" />
+                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
                       Chọn File Đã Sửa (B)
                     </span>
-                    <span className="text-[11px] text-slate-400 mt-0.5">
+                    <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
                       Kéo thả tệp tin vào đây hoặc bấm để duyệt
                     </span>
-                  </div>
+                  </>
                 )}
               </div>
             </div>
@@ -1152,7 +1150,7 @@ export const FileFolderDiffComparer: React.FC = () => {
                   </span>
                   <button
                     onClick={() => folderAInputRef.current?.click()}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 transition-colors"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors"
                   >
                     <FolderOpen className="w-3.5 h-3.5" />
                     <span>{t.diff.browse}</span>
@@ -1179,7 +1177,7 @@ export const FileFolderDiffComparer: React.FC = () => {
                   </span>
                   <button
                     onClick={() => folderBInputRef.current?.click()}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 transition-colors"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors"
                   >
                     <FolderOpen className="w-3.5 h-3.5" />
                     <span>{t.diff.browse}</span>
@@ -1205,7 +1203,7 @@ export const FileFolderDiffComparer: React.FC = () => {
                       placeholder={t.diff.searchFiles}
                       value={folderSearch}
                       onChange={(e) => setFolderSearch(e.target.value)}
-                      className="w-full pl-8 pr-2 py-1 text-xs rounded-lg border border-slate-200 dark:border-slate-750 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500"
+                      className="w-full pl-8 pr-2 py-1 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500"
                     />
                   </div>
 
@@ -1255,7 +1253,7 @@ export const FileFolderDiffComparer: React.FC = () => {
                 </div>
 
                 {/* File List */}
-                <div className="flex-1 overflow-auto divide-y divide-slate-100 dark:divide-slate-850 py-1">
+                <div className="flex-1 overflow-auto divide-y divide-slate-100 dark:divide-slate-800 py-1">
                   {filteredFolderItems.length === 0 ? (
                     <div className="p-4 text-center text-xs text-slate-400">
                       {folderStats.total === 0 ? "Chưa có file nào để hiển thị" : "Không tìm thấy file phù hợp"}
@@ -1321,7 +1319,7 @@ export const FileFolderDiffComparer: React.FC = () => {
             {/* Right Pane: Diff Viewer */}
             <div className="flex-1 flex flex-col overflow-hidden">
               {/* Diff Result Sub-Header */}
-              <div className="flex flex-wrap items-center justify-between px-3.5 py-2 bg-slate-50 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 text-xs shrink-0">
+              <div className="flex flex-wrap items-center justify-between px-3.5 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-xs shrink-0">
                 <div className="flex items-center gap-3">
                   <span className="font-semibold text-slate-800 dark:text-slate-200">
                     {mode === "file"
@@ -1337,11 +1335,11 @@ export const FileFolderDiffComparer: React.FC = () => {
                   {!isBinaryComparison && (
                     <div className="hidden sm:flex items-center gap-2 text-[11px]">
                       <span className="flex items-center gap-1 text-slate-600 dark:text-slate-400">
-                        <span className="inline-block w-2.5 h-2.5 rounded-xs bg-[#fee2e2] border border-[#fca5a5]" />
+                        <span className="inline-block w-2.5 h-2.5 rounded-xs bg-[#fee2e2] dark:bg-rose-950/80 border border-[#fca5a5] dark:border-rose-800" />
                         {t.diff.original}
                       </span>
                       <span className="flex items-center gap-1 text-slate-600 dark:text-slate-400">
-                        <span className="inline-block w-2.5 h-2.5 rounded-xs bg-[#ccfbf1] border border-[#99f6e4]" />
+                        <span className="inline-block w-2.5 h-2.5 rounded-xs bg-[#ccfbf1] dark:bg-teal-950/80 border border-[#99f6e4] dark:border-teal-800" />
                         {t.diff.modified}
                       </span>
                       <span className="flex items-center gap-1 text-slate-600 dark:text-slate-400">
@@ -1388,7 +1386,7 @@ export const FileFolderDiffComparer: React.FC = () => {
                   </p>
 
                   <div className="grid grid-cols-2 gap-4 mt-6 w-full max-w-lg">
-                    <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-850 text-left">
+                    <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/60 text-left">
                       <div className="text-[10px] font-semibold text-slate-400 uppercase">{t.diff.fileA}</div>
                       <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate mt-0.5">
                         {currentItemA?.name || "Không có tệp"}
@@ -1398,7 +1396,7 @@ export const FileFolderDiffComparer: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-850 text-left">
+                    <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/60 text-left">
                       <div className="text-[10px] font-semibold text-slate-400 uppercase">{t.diff.fileB}</div>
                       <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate mt-0.5">
                         {currentItemB?.name || "Không có tệp"}
@@ -1484,14 +1482,14 @@ export const FileFolderDiffComparer: React.FC = () => {
                               const isMod = !row.left.isSpacer && !row.right.isSpacer && row.isChanged;
                               const isCurrentActive = idx === currentDiffIndex;
 
-                              let leftGutter = "text-slate-400 dark:text-slate-500 font-normal bg-slate-50/90 dark:bg-slate-850/90";
+                              let leftGutter = "text-slate-400 dark:text-slate-500 font-normal bg-slate-50/90 dark:bg-slate-900";
                               let leftBg = "hover:bg-slate-50/70 dark:hover:bg-slate-800/40";
                               if (isPureDel) {
-                                leftGutter = "bg-[#fca5a5] text-[#7f1d1d] dark:bg-rose-700 dark:text-rose-100 font-semibold";
-                                leftBg = "bg-[#fca5a5]/80 text-[#4c0519] dark:bg-rose-900/60 dark:text-rose-100 font-medium";
+                                leftGutter = "bg-rose-200 text-rose-900 dark:bg-rose-900 dark:text-rose-100 font-semibold";
+                                leftBg = "bg-rose-100/70 text-rose-950 dark:bg-rose-950/40 dark:text-rose-200 font-medium";
                               } else if (isMod) {
-                                leftGutter = "bg-[#fee2e2] text-[#991b1b] dark:bg-rose-950 dark:text-rose-300 font-semibold";
-                                leftBg = "bg-[#fee2e2]/60 dark:bg-rose-950/20";
+                                leftGutter = "bg-rose-100/70 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300 font-medium";
+                                leftBg = "bg-rose-50/40 dark:bg-rose-950/20";
                               }
 
                               return (
@@ -1547,14 +1545,14 @@ export const FileFolderDiffComparer: React.FC = () => {
                               const isMod = !row.left.isSpacer && !row.right.isSpacer && row.isChanged;
                               const isCurrentActive = idx === currentDiffIndex;
 
-                              let rightGutter = "text-slate-400 dark:text-slate-500 font-normal bg-slate-50/90 dark:bg-slate-850/90";
+                              let rightGutter = "text-slate-400 dark:text-slate-500 font-normal bg-slate-50/90 dark:bg-slate-900";
                               let rightBg = "hover:bg-slate-50/70 dark:hover:bg-slate-800/40";
                               if (isPureAdd) {
-                                rightGutter = "bg-[#5eead4] text-[#134e4a] dark:bg-teal-700 dark:text-teal-100 font-semibold";
-                                rightBg = "bg-[#5eead4]/80 text-[#042f2e] dark:bg-teal-900/60 dark:text-teal-100 font-medium";
+                                rightGutter = "bg-teal-200 text-teal-900 dark:bg-teal-900 dark:text-teal-100 font-semibold";
+                                rightBg = "bg-teal-100/70 text-teal-950 dark:bg-teal-950/40 dark:text-teal-200 font-medium";
                               } else if (isMod) {
-                                rightGutter = "bg-[#ccfbf1] text-[#0f766e] dark:bg-teal-950 dark:text-teal-300 font-semibold";
-                                rightBg = "bg-[#ccfbf1]/50 dark:bg-teal-950/20";
+                                rightGutter = "bg-teal-100/70 text-teal-800 dark:bg-teal-950/80 dark:text-teal-300 font-medium";
+                                rightBg = "bg-teal-50/40 dark:bg-teal-950/20";
                               }
 
                               return (
@@ -1610,23 +1608,23 @@ export const FileFolderDiffComparer: React.FC = () => {
                             const isAdd = line.type === "insert";
 
                             let rowBg = "hover:bg-slate-50/70 dark:hover:bg-slate-800/40";
-                            let leftGutterBg = "bg-slate-50/90 dark:bg-slate-850/90 text-slate-400 dark:text-slate-500";
-                            let rightGutterBg = "bg-slate-50/90 dark:bg-slate-850/90 text-slate-400 dark:text-slate-500 border-r border-slate-200 dark:border-slate-800";
-                            let markerBg = "bg-slate-50/90 dark:bg-slate-850/90 text-slate-300 dark:text-slate-600";
+                            let leftGutterBg = "bg-slate-50/90 dark:bg-slate-900 text-slate-400 dark:text-slate-500";
+                            let rightGutterBg = "bg-slate-50/90 dark:bg-slate-900 text-slate-400 dark:text-slate-500 border-r border-slate-200 dark:border-slate-800";
+                            let markerBg = "bg-slate-50/90 dark:bg-slate-900 text-slate-300 dark:text-slate-600";
                             let textColor = "text-slate-800 dark:text-slate-200";
 
                             if (isDel) {
-                              rowBg = "bg-[#fee2e2]/60 dark:bg-rose-950/20 hover:bg-[#fee2e2]/80 dark:hover:bg-rose-950/30 transition-colors";
-                              leftGutterBg = "bg-[#fee2e2] text-[#991b1b] dark:bg-rose-900/40 dark:text-rose-300 font-semibold";
-                              rightGutterBg = "bg-[#fee2e2] text-slate-400 dark:text-slate-600 border-r border-rose-200 dark:border-rose-900/40";
-                              markerBg = "bg-[#fee2e2] text-rose-600 dark:text-rose-400 font-bold";
-                              textColor = "text-[#991b1b] dark:text-rose-100";
+                              rowBg = "bg-rose-50/40 dark:bg-rose-950/20 hover:bg-rose-100/40 dark:hover:bg-rose-950/30 transition-colors";
+                              leftGutterBg = "bg-rose-100/70 text-rose-800 dark:bg-rose-950 dark:text-rose-300 font-medium";
+                              rightGutterBg = "bg-rose-50/80 text-slate-400 dark:text-slate-600 border-r border-rose-200/50 dark:border-rose-900/40";
+                              markerBg = "bg-rose-100/70 text-rose-600 dark:text-rose-400 font-bold";
+                              textColor = "text-slate-800 dark:text-slate-200";
                             } else if (isAdd) {
-                              rowBg = "bg-[#ccfbf1]/50 dark:bg-teal-950/20 hover:bg-[#ccfbf1]/70 dark:hover:bg-teal-950/30 transition-colors";
-                              leftGutterBg = "bg-[#ccfbf1] text-slate-400 dark:text-slate-600";
-                              rightGutterBg = "bg-[#ccfbf1] text-[#0f766e] dark:bg-teal-900/40 dark:text-teal-300 font-semibold border-r border-teal-200 dark:border-teal-900/40";
-                              markerBg = "bg-[#ccfbf1] text-teal-600 dark:text-teal-400 font-bold";
-                              textColor = "text-[#0f766e] dark:text-teal-100";
+                              rowBg = "bg-teal-50/40 dark:bg-teal-950/20 hover:bg-teal-100/40 dark:hover:bg-teal-950/30 transition-colors";
+                              leftGutterBg = "bg-teal-50/80 text-slate-400 dark:text-slate-600";
+                              rightGutterBg = "bg-teal-100/70 text-teal-800 dark:bg-teal-950 dark:text-teal-300 font-medium border-r border-teal-200/50 dark:border-teal-900/40";
+                              markerBg = "bg-teal-100/70 text-teal-600 dark:text-teal-400 font-bold";
+                              textColor = "text-slate-800 dark:text-slate-200";
                             }
 
                             return (
@@ -1673,7 +1671,7 @@ export const FileFolderDiffComparer: React.FC = () => {
                   </div>
 
                   {/* Rightmost High-Performance Canvas Minimap (Overview Ruler) */}
-                  <div className="w-3.5 shrink-0 bg-slate-100/60 dark:bg-slate-850/60 border-l border-slate-200 dark:border-slate-800 flex select-none relative">
+                  <div className="w-3.5 shrink-0 bg-slate-100/60 dark:bg-slate-900/80 border-l border-slate-200 dark:border-slate-800 flex select-none relative">
                     <canvas
                       ref={canvasRef}
                       width={14}

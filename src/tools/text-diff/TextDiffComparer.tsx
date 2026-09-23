@@ -58,6 +58,8 @@ export const TextDiffComparer: React.FC = () => {
   const isSyncingLeft = useRef(false);
   const isSyncingRight = useRef(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const oldTextRef = useRef<HTMLTextAreaElement>(null);
+  const newTextRef = useRef<HTMLTextAreaElement>(null);
 
   // Async diff with debounce & race-condition cancellation
   useEffect(() => {
@@ -335,14 +337,14 @@ export const TextDiffComparer: React.FC = () => {
     segments: DiffSegment[],
     isSpacer: boolean,
     side: "left" | "right",
-    isChanged: boolean,
+    _isChanged: boolean,
     fallbackText?: string,
   ) => {
     if (isSpacer) return <span className="opacity-0 select-none">{" "}</span>;
     if (!segments || segments.length === 0) {
       const text = fallbackText || " ";
       const display = text.length > 2500 ? text.slice(0, 2500) + "..." : text;
-      return <span>{display}</span>;
+      return <span className="text-slate-800 dark:text-slate-200">{display}</span>;
     }
 
     return segments.map((seg, idx) => {
@@ -352,7 +354,7 @@ export const TextDiffComparer: React.FC = () => {
           return (
             <span
               key={idx}
-              className="bg-[#fca5a5] text-[#7f1d1d] dark:bg-rose-900/90 dark:text-rose-100 font-medium px-0.5 rounded-xs"
+              className="bg-rose-200/90 text-rose-950 dark:bg-rose-500/35 dark:text-rose-100 font-semibold px-0.5 rounded-xs border border-rose-300 dark:border-rose-400/60 shadow-xs"
             >
               {text}
             </span>
@@ -361,7 +363,7 @@ export const TextDiffComparer: React.FC = () => {
           return (
             <span
               key={idx}
-              className="bg-[#99f6e4] text-[#115e59] dark:bg-teal-900/90 dark:text-teal-100 font-medium px-0.5 rounded-xs"
+              className="bg-teal-200/90 text-teal-950 dark:bg-teal-500/35 dark:text-teal-100 font-semibold px-0.5 rounded-xs border border-teal-300 dark:border-teal-400/60 shadow-xs"
             >
               {text}
             </span>
@@ -369,18 +371,12 @@ export const TextDiffComparer: React.FC = () => {
         }
       }
 
-      if (isChanged) {
-        return (
-          <span
-            key={idx}
-            className={side === "left" ? "text-[#991b1b] dark:text-rose-200" : "text-[#0f766e] dark:text-teal-200"}
-          >
-            {seg.text}
-          </span>
-        );
-      }
-
-      return <span key={idx}>{seg.text}</span>;
+      // Unchanged text: Keep clear readable neutral color, do NOT turn all text red or green!
+      return (
+        <span key={idx} className="text-slate-800 dark:text-slate-100">
+          {seg.text}
+        </span>
+      );
     });
   };
 
@@ -417,7 +413,7 @@ export const TextDiffComparer: React.FC = () => {
         {/* Swap button */}
         <button
           onClick={handleSwap}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-750 transition-colors"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
           title={t.diff.swap}
         >
           <ArrowLeftRight className="w-3.5 h-3.5 text-slate-500" />
@@ -440,7 +436,7 @@ export const TextDiffComparer: React.FC = () => {
         {/* Toggle Inputs button */}
         <button
           onClick={() => setShowInputs((prev) => !prev)}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-750 transition-colors"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
         >
           {showInputs ? (
             <>
@@ -520,7 +516,7 @@ export const TextDiffComparer: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 shrink-0">
               {/* Left Input: Original */}
               <div className="flex flex-col rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
-                <div className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 text-xs select-none">
+                <div className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-xs select-none">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-slate-800 dark:text-slate-200">
                       {t.diff.original}
@@ -532,14 +528,16 @@ export const TextDiffComparer: React.FC = () => {
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => pasteText(setOldText)}
-                      className="p-1 rounded hover:bg-slate-200/70 dark:hover:bg-slate-750 text-slate-600 dark:text-slate-300 transition-colors"
+                      tabIndex={-1}
+                      className="p-1 rounded hover:bg-slate-200/70 dark:hover:bg-slate-700/80 text-slate-600 dark:text-slate-300 transition-colors"
                       title={t.common.paste}
                     >
                       <Clipboard className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => copyText(oldText, "left")}
-                      className="p-1 rounded hover:bg-slate-200/70 dark:hover:bg-slate-750 text-slate-600 dark:text-slate-300 transition-colors"
+                      tabIndex={-1}
+                      className="p-1 rounded hover:bg-slate-200/70 dark:hover:bg-slate-700/80 text-slate-600 dark:text-slate-300 transition-colors"
                       title={t.common.copy}
                     >
                       {copiedSide === "left" ? (
@@ -551,6 +549,7 @@ export const TextDiffComparer: React.FC = () => {
                     <button
                       onClick={() => setOldText("")}
                       disabled={!oldText}
+                      tabIndex={-1}
                       className="p-1 rounded hover:bg-rose-100 dark:hover:bg-rose-950/40 text-rose-500 transition-colors disabled:opacity-30"
                       title={t.common.clear}
                     >
@@ -559,8 +558,15 @@ export const TextDiffComparer: React.FC = () => {
                   </div>
                 </div>
                 <textarea
+                  ref={oldTextRef}
                   value={oldText}
                   onChange={(e) => setOldText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Tab" && !e.shiftKey) {
+                      e.preventDefault();
+                      newTextRef.current?.focus();
+                    }
+                  }}
                   placeholder={t.ui.originalTextPlaceholder}
                   spellCheck={false}
                   className="w-full h-36 p-3 resize-y bg-transparent font-mono text-xs leading-relaxed focus:outline-none text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
@@ -569,7 +575,7 @@ export const TextDiffComparer: React.FC = () => {
 
               {/* Right Input: Modified */}
               <div className="flex flex-col rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
-                <div className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 text-xs select-none">
+                <div className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-xs select-none">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-slate-800 dark:text-slate-200">
                       {t.diff.modified}
@@ -581,14 +587,16 @@ export const TextDiffComparer: React.FC = () => {
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => pasteText(setNewText)}
-                      className="p-1 rounded hover:bg-slate-200/70 dark:hover:bg-slate-750 text-slate-600 dark:text-slate-300 transition-colors"
+                      tabIndex={-1}
+                      className="p-1 rounded hover:bg-slate-200/70 dark:hover:bg-slate-700/80 text-slate-600 dark:text-slate-300 transition-colors"
                       title={t.common.paste}
                     >
                       <Clipboard className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => copyText(newText, "right")}
-                      className="p-1 rounded hover:bg-slate-200/70 dark:hover:bg-slate-750 text-slate-600 dark:text-slate-300 transition-colors"
+                      tabIndex={-1}
+                      className="p-1 rounded hover:bg-slate-200/70 dark:hover:bg-slate-700/80 text-slate-600 dark:text-slate-300 transition-colors"
                       title={t.common.copy}
                     >
                       {copiedSide === "right" ? (
@@ -600,6 +608,7 @@ export const TextDiffComparer: React.FC = () => {
                     <button
                       onClick={() => setNewText("")}
                       disabled={!newText}
+                      tabIndex={-1}
                       className="p-1 rounded hover:bg-rose-100 dark:hover:bg-rose-950/40 text-rose-500 transition-colors disabled:opacity-30"
                       title={t.common.clear}
                     >
@@ -608,8 +617,15 @@ export const TextDiffComparer: React.FC = () => {
                   </div>
                 </div>
                 <textarea
+                  ref={newTextRef}
                   value={newText}
                   onChange={(e) => setNewText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Tab" && e.shiftKey) {
+                      e.preventDefault();
+                      oldTextRef.current?.focus();
+                    }
+                  }}
                   placeholder={t.ui.modifiedTextPlaceholder}
                   spellCheck={false}
                   className="w-full h-36 p-3 resize-y bg-transparent font-mono text-xs leading-relaxed focus:outline-none text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
@@ -621,7 +637,7 @@ export const TextDiffComparer: React.FC = () => {
           {/* 2. VIRTUALIZED DIFF RESULTS CONTAINER */}
           <div className="flex flex-col flex-1 min-h-[380px] rounded-xl border border-slate-300/80 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-xs">
             {/* Diff Results Sub-Header with Legend */}
-            <div className="flex flex-wrap items-center justify-between px-3.5 py-2 bg-slate-50 dark:bg-slate-850 border-b border-slate-300/80 dark:border-slate-800 text-xs shrink-0">
+            <div className="flex flex-wrap items-center justify-between px-3.5 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-xs shrink-0">
               <div className="flex items-center gap-3">
                 <span className="font-semibold text-slate-800 dark:text-slate-200">
                   {viewMode === "split" ? t.diff.split : t.diff.unified}
@@ -630,11 +646,11 @@ export const TextDiffComparer: React.FC = () => {
                 {/* Legend Badges */}
                 <div className="hidden sm:flex items-center gap-2 text-[11px]">
                   <span className="flex items-center gap-1 text-slate-600 dark:text-slate-400">
-                    <span className="inline-block w-2.5 h-2.5 rounded-xs bg-[#fee2e2] border border-[#fca5a5]" />
+                    <span className="inline-block w-2.5 h-2.5 rounded-xs bg-[#fee2e2] dark:bg-rose-950/80 border border-[#fca5a5] dark:border-rose-800" />
                     {t.diff.original}
                   </span>
                   <span className="flex items-center gap-1 text-slate-600 dark:text-slate-400">
-                    <span className="inline-block w-2.5 h-2.5 rounded-xs bg-[#ccfbf1] border border-[#99f6e4]" />
+                    <span className="inline-block w-2.5 h-2.5 rounded-xs bg-[#ccfbf1] dark:bg-teal-950/80 border border-[#99f6e4] dark:border-teal-800" />
                     {t.diff.modified}
                   </span>
                   <span className="flex items-center gap-1 text-slate-600 dark:text-slate-400">
@@ -705,14 +721,14 @@ export const TextDiffComparer: React.FC = () => {
                             const isPureDel = !row.left.isSpacer && row.right.isSpacer;
                             const isMod = !row.left.isSpacer && !row.right.isSpacer && row.isChanged;
 
-                            let leftGutter = "text-slate-400 dark:text-slate-500 font-normal bg-slate-50/90 dark:bg-slate-850/90";
+                            let leftGutter = "text-slate-400 dark:text-slate-500 font-normal bg-slate-50/90 dark:bg-slate-900";
                             let leftBg = "hover:bg-slate-50/70 dark:hover:bg-slate-800/40";
                             if (isPureDel) {
-                              leftGutter = "bg-[#fca5a5] text-[#7f1d1d] dark:bg-rose-700 dark:text-rose-100 font-semibold";
-                              leftBg = "bg-[#fca5a5]/80 text-[#4c0519] dark:bg-rose-900/60 dark:text-rose-100 font-medium";
+                              leftGutter = "bg-rose-200 text-rose-900 dark:bg-rose-900 dark:text-rose-100 font-semibold";
+                              leftBg = "bg-rose-100/70 text-rose-950 dark:bg-rose-950/40 dark:text-rose-200 font-medium";
                             } else if (isMod) {
-                              leftGutter = "bg-[#fee2e2] text-[#991b1b] dark:bg-rose-950 dark:text-rose-300 font-semibold";
-                              leftBg = "bg-[#fee2e2]/60 dark:bg-rose-950/20";
+                              leftGutter = "bg-rose-100/70 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300 font-medium";
+                              leftBg = "bg-rose-50/40 dark:bg-rose-950/20";
                             }
 
                             return (
@@ -765,14 +781,14 @@ export const TextDiffComparer: React.FC = () => {
                             const isPureAdd = row.left.isSpacer && !row.right.isSpacer;
                             const isMod = !row.left.isSpacer && !row.right.isSpacer && row.isChanged;
 
-                            let rightGutter = "text-slate-400 dark:text-slate-500 font-normal bg-slate-50/90 dark:bg-slate-850/90";
+                            let rightGutter = "text-slate-400 dark:text-slate-500 font-normal bg-slate-50/90 dark:bg-slate-900";
                             let rightBg = "hover:bg-slate-50/70 dark:hover:bg-slate-800/40";
                             if (isPureAdd) {
-                              rightGutter = "bg-[#5eead4] text-[#134e4a] dark:bg-teal-700 dark:text-teal-100 font-semibold";
-                              rightBg = "bg-[#5eead4]/80 text-[#042f2e] dark:bg-teal-900/60 dark:text-teal-100 font-medium";
+                              rightGutter = "bg-teal-200 text-teal-900 dark:bg-teal-900 dark:text-teal-100 font-semibold";
+                              rightBg = "bg-teal-100/70 text-teal-950 dark:bg-teal-950/40 dark:text-teal-200 font-medium";
                             } else if (isMod) {
-                              rightGutter = "bg-[#ccfbf1] text-[#0f766e] dark:bg-teal-950 dark:text-teal-300 font-semibold";
-                              rightBg = "bg-[#ccfbf1]/50 dark:bg-teal-950/20";
+                              rightGutter = "bg-teal-100/70 text-teal-800 dark:bg-teal-950/80 dark:text-teal-300 font-medium";
+                              rightBg = "bg-teal-50/40 dark:bg-teal-950/20";
                             }
 
                             return (
@@ -826,23 +842,23 @@ export const TextDiffComparer: React.FC = () => {
                           const isAdd = line.type === "insert";
 
                           let rowBg = "hover:bg-slate-50/70 dark:hover:bg-slate-800/40";
-                          let leftGutterBg = "bg-slate-50/90 dark:bg-slate-850/90 text-slate-400 dark:text-slate-500";
-                          let rightGutterBg = "bg-slate-50/90 dark:bg-slate-850/90 text-slate-400 dark:text-slate-500 border-r border-slate-200 dark:border-slate-800";
-                          let markerBg = "bg-slate-50/90 dark:bg-slate-850/90 text-slate-300 dark:text-slate-600";
+                          let leftGutterBg = "bg-slate-50/90 dark:bg-slate-900 text-slate-400 dark:text-slate-500";
+                          let rightGutterBg = "bg-slate-50/90 dark:bg-slate-900 text-slate-400 dark:text-slate-500 border-r border-slate-200 dark:border-slate-800";
+                          let markerBg = "bg-slate-50/90 dark:bg-slate-900 text-slate-300 dark:text-slate-600";
                           let textColor = "text-slate-800 dark:text-slate-200";
 
                           if (isDel) {
-                            rowBg = "bg-[#fee2e2]/60 dark:bg-rose-950/20 hover:bg-[#fee2e2]/80 dark:hover:bg-rose-950/30 transition-colors";
-                            leftGutterBg = "bg-[#fee2e2] text-[#991b1b] dark:bg-rose-900/40 dark:text-rose-300 font-semibold";
-                            rightGutterBg = "bg-[#fee2e2] text-slate-400 dark:text-slate-600 border-r border-rose-200 dark:border-rose-900/40";
-                            markerBg = "bg-[#fee2e2] text-rose-600 dark:text-rose-400 font-bold";
-                            textColor = "text-[#991b1b] dark:text-rose-100";
+                            rowBg = "bg-rose-50/40 dark:bg-rose-950/20 hover:bg-rose-100/40 dark:hover:bg-rose-950/30 transition-colors";
+                            leftGutterBg = "bg-rose-100/70 text-rose-800 dark:bg-rose-950 dark:text-rose-300 font-medium";
+                            rightGutterBg = "bg-rose-50/80 text-slate-400 dark:text-slate-600 border-r border-rose-200/50 dark:border-rose-900/40";
+                            markerBg = "bg-rose-100/70 text-rose-600 dark:text-rose-400 font-bold";
+                            textColor = "text-slate-800 dark:text-slate-200";
                           } else if (isAdd) {
-                            rowBg = "bg-[#ccfbf1]/50 dark:bg-teal-950/20 hover:bg-[#ccfbf1]/70 dark:hover:bg-teal-950/30 transition-colors";
-                            leftGutterBg = "bg-[#ccfbf1] text-slate-400 dark:text-slate-600";
-                            rightGutterBg = "bg-[#ccfbf1] text-[#0f766e] dark:bg-teal-900/40 dark:text-teal-300 font-semibold border-r border-teal-200 dark:border-teal-900/40";
-                            markerBg = "bg-[#ccfbf1] text-teal-600 dark:text-teal-400 font-bold";
-                            textColor = "text-[#0f766e] dark:text-teal-100";
+                            rowBg = "bg-teal-50/40 dark:bg-teal-950/20 hover:bg-teal-100/40 dark:hover:bg-teal-950/30 transition-colors";
+                            leftGutterBg = "bg-teal-50/80 text-slate-400 dark:text-slate-600";
+                            rightGutterBg = "bg-teal-100/70 text-teal-800 dark:bg-teal-950 dark:text-teal-300 font-medium border-r border-teal-200/50 dark:border-teal-900/40";
+                            markerBg = "bg-teal-100/70 text-teal-600 dark:text-teal-400 font-bold";
+                            textColor = "text-slate-800 dark:text-slate-200";
                           }
 
                           return (
@@ -889,7 +905,7 @@ export const TextDiffComparer: React.FC = () => {
                 </div>
 
                 {/* Rightmost High-Performance Canvas Minimap (Overview Ruler) */}
-                <div className="w-3.5 shrink-0 bg-slate-100/60 dark:bg-slate-850/60 border-l border-slate-200 dark:border-slate-800 flex select-none relative">
+                <div className="w-3.5 shrink-0 bg-slate-100/60 dark:bg-slate-900/80 border-l border-slate-200 dark:border-slate-800 flex select-none relative">
                   <canvas
                     ref={canvasRef}
                     width={14}

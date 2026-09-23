@@ -106,12 +106,7 @@ export function splitLines(text: string): string[] {
   return lines;
 }
 
-/**
- * Splits a line into tokens (words, punctuation, whitespace) for word-level diffing.
- */
-function tokenizeWords(s: string): string[] {
-  return s.match(/[^\s\w]+|\w+|\s+/g) || (s ? [s] : []);
-}
+
 
 /**
  * Word-level diff using Myers algorithm on word tokens.
@@ -147,8 +142,8 @@ export function computeWordDiff(
     };
   }
 
-  const tokens1 = tokenizeWords(s1);
-  const tokens2 = tokenizeWords(s2);
+  const tokens1 = Array.from(s1);
+  const tokens2 = Array.from(s2);
 
   const edits = myersDiffTokens(tokens1, tokens2, options);
   const left: DiffSegment[] = [];

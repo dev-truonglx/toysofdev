@@ -1,6 +1,6 @@
 [package]
 name = "toysofdev"
-version = "0.0.3"
+version = "0.0.5"
 description = "Toys of Dev - Local-First Developer Tools"
 authors = ["Antigravity"]
 edition = "2021"
@@ -20,7 +20,7 @@ tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-similar = { version = "2.7", features = ["inline"] }
+similar = { version = "2.7", features = ["inline", "unicode"] }
 regex = "1.11"
 memchr = "2.7"
 memmap2 = "0.9"

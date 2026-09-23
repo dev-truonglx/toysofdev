@@ -111,7 +111,7 @@ fn compute_word_diff(
         );
     }
 
-    let word_diff = TextDiff::configure().diff_words(s1, s2);
+    let word_diff = TextDiff::configure().diff_chars(s1, s2);
     let mut left_segs = Vec::new();
     let mut right_segs = Vec::new();
 
@@ -322,9 +322,12 @@ pub async fn compute_text_diff(
                                 compute_word_diff(s1, s2, ignore_ws, ignore_c)
                             };
 
-                            differences_count += 1;
+                            let is_really_equal = left_segs.iter().all(|s| !s.is_diff) && right_segs.iter().all(|s| !s.is_diff);
+                            if !is_really_equal {
+                                differences_count += 1;
+                            }
                             rows.push(AlignedRow {
-                                is_changed: true,
+                                is_changed: !is_really_equal,
                                 left: DiffRowSide {
                                     line_num: Some(oi + 1),
                                     text: s1.to_string(),
@@ -461,6 +464,26 @@ mod tests {
             assert_eq!(res.rows[0].left.text, "hello world");
             assert_eq!(res.rows[0].right.text, "hello rust world");
             assert!(!res.word_diff_disabled);
+        });
+    }
+
+    #[test]
+    fn test_char_diff_ds_vs_dsf() {
+        tauri::async_runtime::block_on(async {
+            let res = compute_text_diff("ds".into(), "dsf".into(), None, None, None)
+                .await
+                .unwrap();
+            assert_eq!(res.rows.len(), 1);
+            assert!(res.rows[0].is_changed);
+            assert_eq!(res.rows[0].left.segments.len(), 1);
+            assert_eq!(res.rows[0].left.segments[0].text, "ds");
+            assert!(!res.rows[0].left.segments[0].is_diff);
+
+            assert_eq!(res.rows[0].right.segments.len(), 2);
+            assert_eq!(res.rows[0].right.segments[0].text, "ds");
+            assert!(!res.rows[0].right.segments[0].is_diff);
+            assert_eq!(res.rows[0].right.segments[1].text, "f");
+            assert!(res.rows[0].right.segments[1].is_diff);
         });
     }
 
