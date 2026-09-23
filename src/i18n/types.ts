@@ -73,6 +73,7 @@ export interface TranslationSchema {
     compress: string;
     decompress: string;
     format: string;
+    formatted: string;
     minify: string;
     generate: string;
     validate: string;
@@ -82,6 +83,9 @@ export interface TranslationSchema {
     spaces4: string;
     tab1: string;
     minified0: string;
+    attributeLayout: string;
+    inlineAttributes: string;
+    multilineAttributes: string;
     switchInputOutput: string;
     uppercase: string;
     lowercase: string;

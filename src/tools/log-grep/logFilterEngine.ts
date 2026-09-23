@@ -1,4 +1,165 @@
-import { FilterLineResult, FilterOptions, FilterResult, HighlightRange } from "./types";
+import { invoke } from "@tauri-apps/api/core";
+import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import {
+  FilterLineResult,
+  FilterOptions,
+  FilterResult,
+  HighlightRange,
+  FileHandle,
+  IndexProgressEvent,
+  SearchResultSummaryEvent,
+  SearchMatchItem,
+  LineItem,
+} from "./types";
+
+export function isTauri(): boolean {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+export function formatFileSize(bytes?: number): string {
+  if (!bytes || bytes <= 0) return "0 B";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * (1024 * 1024))).toFixed(2)} GB`;
+}
+
+export async function pickLogFileViaTauri(): Promise<string | null> {
+  if (isTauri()) {
+    try {
+      const path = await invoke<string | null>("pick_log_file");
+      return path;
+    } catch (err) {
+      console.warn("pick_log_file failed via Tauri:", err);
+    }
+  }
+  return null;
+}
+
+export async function openLogFileViaTauri(filePath: string): Promise<FileHandle | null> {
+  if (isTauri()) {
+    return invoke<FileHandle>("open_log_file", { path: filePath });
+  }
+  return null;
+}
+
+export async function closeLogFileViaTauri(fileId: string): Promise<void> {
+  if (isTauri()) {
+    try {
+      await invoke("close_log_file", { fileId });
+    } catch (err) {
+      console.warn("close_log_file error:", err);
+    }
+  }
+}
+
+export async function searchLogViaTauri(
+  fileId: string,
+  query: string,
+  isRegex: boolean,
+  matchCase: boolean,
+  searchId?: string,
+): Promise<string | null> {
+  if (isTauri()) {
+    return invoke<string>("search_log", {
+      fileId,
+      query,
+      isRegex,
+      matchCase,
+      searchId,
+    });
+  }
+  return null;
+}
+
+export async function cancelSearchViaTauri(searchId: string): Promise<void> {
+  if (isTauri()) {
+    try {
+      await invoke("cancel_search", { searchId });
+    } catch (err) {
+      console.warn("cancel_search error:", err);
+    }
+  }
+}
+
+export async function getLinesViaTauri(
+  fileId: string,
+  startLine: number,
+  endLine: number,
+): Promise<LineItem[]> {
+  if (isTauri()) {
+    return invoke<LineItem[]>("get_lines", {
+      fileId,
+      startLine,
+      endLine,
+    });
+  }
+  return [];
+}
+
+export async function onIndexProgress(
+  callback: (event: IndexProgressEvent) => void,
+): Promise<UnlistenFn> {
+  return listen<IndexProgressEvent>("index-progress", (e) => {
+    callback(e.payload);
+  });
+}
+
+export async function onSearchResultSummary(
+  callback: (event: SearchResultSummaryEvent) => void,
+): Promise<UnlistenFn> {
+  return listen<SearchResultSummaryEvent>("search-result-summary", (e) => {
+    callback(e.payload);
+  });
+}
+
+export async function getSearchResultsViaTauri(
+  searchId: string,
+  offset: number,
+  limit: number,
+): Promise<SearchMatchItem[]> {
+  if (isTauri()) {
+    return invoke<SearchMatchItem[]>("get_search_results", {
+      searchId,
+      offset,
+      limit,
+    });
+  }
+  return [];
+}
+
+export async function exportSearchResultsViaTauri(
+  searchId: string,
+  suggestedFilename?: string,
+  destPath?: string,
+): Promise<string | null> {
+  if (isTauri()) {
+    return invoke<string | null>("export_search_results", {
+      searchId,
+      suggestedFilename,
+      destPath,
+    });
+  }
+  return null;
+}
+
+export async function grepLogFileViaTauri(
+  filePath: string,
+  options: FilterOptions,
+): Promise<FilterResult> {
+  return invoke<FilterResult>("grep_log_file", {
+    filePath,
+    options: {
+      pattern: options.pattern,
+      isRegex: options.isRegex,
+      matchCase: options.matchCase,
+      wholeWord: options.wholeWord,
+      invertMatch: options.invertMatch,
+      contextLines: options.contextLines,
+      customExpandedIndices: options.customExpandedIndices,
+    },
+  });
+}
 
 export function escapeRegex(string: string): string {
   return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { SearchCode } from "lucide-react";
+import { SearchCode, Code2, Check, Copy, Clipboard, Trash2 } from "lucide-react";
 import { ToolLayout } from "../../components/common/ToolLayout";
 import { useTranslation } from "../../i18n";
 
@@ -26,6 +26,8 @@ export const JsonPathTester: React.FC = () => {
   const [pathQuery, setPathQuery] = useState("$.store.book[*].title");
   const [output, setOutput] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [isFormatted, setIsFormatted] = useState(false);
+  const [copiedResult, setCopiedResult] = useState(false);
 
   // Self-contained JSONPath query engine
   const evaluateJsonPath = (obj: unknown, query: string): unknown => {
@@ -128,7 +130,48 @@ export const JsonPathTester: React.FC = () => {
       setError(err instanceof Error ? err.message : t.ui.invalidJsonOrJsonPath);
       setOutput("");
     }
-  }, [jsonInput, pathQuery]);
+  }, [jsonInput, pathQuery, t]);
+
+  const handleFormat = () => {
+    if (!jsonInput.trim()) return;
+    try {
+      const parsed = JSON.parse(jsonInput);
+      setJsonInput(JSON.stringify(parsed, null, 2));
+      setError(null);
+      setIsFormatted(true);
+      setTimeout(() => setIsFormatted(false), 1500);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : t.ui.invalidJsonOrJsonPath);
+    }
+  };
+
+  const handlePaste = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        setJsonInput(text);
+      }
+    } catch (err) {
+      console.error("Failed to paste:", err);
+    }
+  };
+
+  const handleClear = () => {
+    setJsonInput("");
+    setOutput("");
+    setError(null);
+  };
+
+  const handleCopyResult = async () => {
+    if (!output) return;
+    try {
+      await navigator.clipboard.writeText(output);
+      setCopiedResult(true);
+      setTimeout(() => setCopiedResult(false), 1500);
+    } catch (err) {
+      console.error("Failed to copy result:", err);
+    }
+  };
 
   const presets = [
     "$.store.book[*].title",
@@ -179,9 +222,59 @@ export const JsonPathTester: React.FC = () => {
 
           {/* Dual Panes */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1">
+            {/* Source JSON */}
             <div className="flex flex-col rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
               <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-xs font-medium text-slate-500">
-                <span className="font-semibold text-slate-700 dark:text-slate-300">{t.ui.sourceJson}</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">{t.ui.sourceJson}</span>
+                  {jsonInput && (
+                    <span className="text-[11px] text-slate-400 font-mono font-normal">
+                      ({jsonInput.length} {t.common.characters})
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handleFormat}
+                    disabled={!jsonInput.trim()}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-all ${
+                      isFormatted
+                        ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                        : "bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/60 disabled:opacity-40 disabled:cursor-not-allowed"
+                    }`}
+                    title={t.ui.format}
+                  >
+                    {isFormatted ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                        <span>{t.ui.formatted}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Code2 className="w-3.5 h-3.5" />
+                        <span>{t.ui.format}</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handlePaste}
+                    className="p-1 rounded hover:bg-slate-200/70 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
+                    title={t.common.paste}
+                  >
+                    <Clipboard className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleClear}
+                    disabled={!jsonInput}
+                    className="p-1 rounded hover:bg-rose-100 dark:hover:bg-rose-950/40 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    title={t.common.clear}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
               <textarea
                 value={jsonInput}
@@ -192,9 +285,42 @@ export const JsonPathTester: React.FC = () => {
               />
             </div>
 
+            {/* JSONPath Result */}
             <div className="flex flex-col rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
               <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-xs font-medium text-slate-500">
-                <span className="font-semibold text-slate-700 dark:text-slate-300">{t.ui.jsonPathResult}</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">{t.ui.jsonPathResult}</span>
+                  {output && (
+                    <span className="text-[11px] text-slate-400 font-mono font-normal">
+                      ({output.length} {t.common.characters})
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <button
+                    type="button"
+                    onClick={handleCopyResult}
+                    disabled={!output}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs transition-all ${
+                      copiedResult
+                        ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                        : "hover:bg-slate-200/70 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                    }`}
+                    title={t.common.copy}
+                  >
+                    {copiedResult ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                        <span className="font-medium text-[11px]">{t.common.copied}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span className="text-[11px]">{t.common.copy}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
               <textarea
                 value={output}

@@ -4,7 +4,7 @@ export interface FilterOptions {
   matchCase: boolean;
   wholeWord: boolean;
   invertMatch: boolean;
-  contextLines: number;
+  contextLines?: number;
   customExpandedIndices?: number[];
 }
 
@@ -26,7 +26,46 @@ export interface FilterResult {
   totalSourceLines: number;
   matchedCount: number;
   executionTimeMs: number;
+  isTruncated?: boolean;
+  fileSizeBytes?: number;
   error: string | null;
+}
+
+export type IndexStatus = "notIndexed" | "indexing" | "ready" | "error";
+
+export interface FileHandle {
+  fileId: string;
+  filePath: string;
+  fileSize: number;
+  indexStatus: IndexStatus;
+  totalLines: number;
+}
+
+export interface IndexProgressEvent {
+  fileId: string;
+  percent: number;
+  totalLines: number;
+  status: IndexStatus;
+}
+
+export interface SearchMatchItem {
+  lineNumber: number;
+  byteOffset: number;
+  content: string;
+  highlights: HighlightRange[];
+}
+
+export interface SearchResultSummaryEvent {
+  searchId: string;
+  fileId: string;
+  totalMatches: number;
+  executionTimeMs: number;
+  error?: string | null;
+}
+
+export interface LineItem {
+  lineNumber: number;
+  content: string;
 }
 
 export type PresetCategory =

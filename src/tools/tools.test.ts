@@ -494,6 +494,61 @@ describe("Tool Logic Tests", () => {
       });
     });
   });
+
+  describe("XML Formatter & Minifier", () => {
+    it("formats simple XML with inline elements", async () => {
+      const { formatXml } = await import("./xml-formatter/XmlFormatter");
+      const input = "<note><to>Tove</to><from>Jani</from></note>";
+      const formatted = formatXml(input, "2", "inline");
+      expect(formatted).toBe("<note>\n  <to>Tove</to>\n  <from>Jani</from>\n</note>");
+    });
+
+    it("formats attributes inline when inline mode is selected", async () => {
+      const { formatXml } = await import("./xml-formatter/XmlFormatter");
+      const input = `<shipping ship_no="123" ship_date="2026/09/26"><goods code="ABC" price="100"/></shipping>`;
+      const formatted = formatXml(input, "2", "inline");
+      expect(formatted).toContain(`<shipping ship_no="123" ship_date="2026/09/26">`);
+      expect(formatted).toContain(`  <goods code="ABC" price="100" />`);
+    });
+
+    it("formats attributes multiline with clean vertical indentation when multiline mode is selected", async () => {
+      const { formatXml } = await import("./xml-formatter/XmlFormatter");
+      const input = `
+        <goods
+                goods_code="RIF49G"
+                price="8172.73"
+                                categoryid="97223"
+                                    typeid="2012"
+            >
+            <goodsdetail
+                cs_code="019_0C"
+                quantity="2"
+            />
+        </goods>
+      `;
+      const formatted = formatXml(input, "2", "multiline");
+
+      // Verify that all attributes are indented at the exact same column:
+      expect(formatted).toContain("<goods\n  goods_code=\"RIF49G\"\n  price=\"8172.73\"\n  categoryid=\"97223\"\n  typeid=\"2012\"\n>");
+      // Verify self-closing tag attributes and closing /> alignment:
+      expect(formatted).toContain("  <goodsdetail\n    cs_code=\"019_0C\"\n    quantity=\"2\"\n  />");
+    });
+
+    it("minifies XML removing comments and collapsing spaces between tags", async () => {
+      const { formatXml } = await import("./xml-formatter/XmlFormatter");
+      const input = `
+        <!-- comment -->
+        <catalog>
+          <book id="1">
+            <title>XML Guide</title>
+          </book>
+        </catalog>
+      `;
+      const minified = formatXml(input, "minified", "inline");
+      expect(minified).toBe('<catalog><book id="1"><title>XML Guide</title></book></catalog>');
+      expect(minified).not.toContain("<!--");
+    });
+  });
 });
 
 

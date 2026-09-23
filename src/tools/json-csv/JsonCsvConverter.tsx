@@ -69,6 +69,19 @@ export const JsonCsvConverter: React.FC = () => {
     }
   }, [input, delimiter]);
 
+  const handleFormat = () => {
+    if (!input.trim()) return false;
+    try {
+      const parsed = JSON.parse(input);
+      setInput(JSON.stringify(parsed, null, 2));
+      setError(null);
+      return true;
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to parse JSON");
+      return false;
+    }
+  };
+
   const handleDownload = () => {
     if (!output) return;
     const blob = new Blob([output], { type: "text/csv;charset=utf-8;" });
@@ -121,6 +134,7 @@ export const JsonCsvConverter: React.FC = () => {
       inputLabel="JSON Array Input"
       inputValue={input}
       onInputChange={setInput}
+      onFormatInput={handleFormat}
       inputPlaceholder="[ { ... }, { ... } ]"
       outputLabel="CSV Output"
       outputValue={output}

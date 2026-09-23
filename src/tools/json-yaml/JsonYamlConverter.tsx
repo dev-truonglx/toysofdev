@@ -39,6 +39,24 @@ export const JsonYamlConverter: React.FC = () => {
     }
   }, [input, mode, indent]);
 
+  const handleFormat = () => {
+    if (!input.trim()) return false;
+    try {
+      if (mode === "json-to-yaml") {
+        const parsed = JSON.parse(input);
+        setInput(JSON.stringify(parsed, null, indent));
+      } else {
+        const parsed = YAML.parse(input);
+        setInput(YAML.stringify(parsed, { indent }));
+      }
+      setError(null);
+      return true;
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Formatting error");
+      return false;
+    }
+  };
+
   const handleSwap = () => {
     setMode((prev) => (prev === "json-to-yaml" ? "yaml-to-json" : "json-to-yaml"));
     if (output) {
@@ -107,6 +125,7 @@ export const JsonYamlConverter: React.FC = () => {
       inputLabel={mode === "json-to-yaml" ? "JSON Input" : "YAML Input"}
       inputValue={input}
       onInputChange={setInput}
+      onFormatInput={handleFormat}
       inputPlaceholder={mode === "json-to-yaml" ? '{\n  "key": "value"\n}' : "key: value"}
       outputLabel={mode === "json-to-yaml" ? "YAML Output" : "JSON Output"}
       outputValue={output}

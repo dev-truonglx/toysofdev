@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Star, Copy, Check, Trash2, Clipboard, AlertCircle, LucideIcon } from "lucide-react";
+import { Star, Copy, Check, Trash2, Clipboard, AlertCircle, LucideIcon, Code2 } from "lucide-react";
 import { useAppStore } from "../../store/useAppStore";
 import { useTranslation } from "../../i18n";
 
@@ -21,6 +21,7 @@ interface ToolLayoutProps {
   customPanes?: React.ReactNode;
   actionsRight?: React.ReactNode;
   hideInput?: boolean;
+  onFormatInput?: () => boolean | void;
 }
 
 export const ToolLayout: React.FC<ToolLayoutProps> = ({
@@ -41,6 +42,7 @@ export const ToolLayout: React.FC<ToolLayoutProps> = ({
   customPanes,
   actionsRight,
   hideInput,
+  onFormatInput,
 }) => {
   const { isBookmarked, toggleBookmark } = useAppStore();
   const { t } = useTranslation();
@@ -57,6 +59,17 @@ export const ToolLayout: React.FC<ToolLayoutProps> = ({
 
   const bookmarked = isBookmarked(id);
   const [copied, setCopied] = useState(false);
+  const [inputFormatted, setInputFormatted] = useState(false);
+
+  const handleFormatInput = () => {
+    if (onFormatInput) {
+      const res = onFormatInput();
+      if (res !== false) {
+        setInputFormatted(true);
+        setTimeout(() => setInputFormatted(false), 1500);
+      }
+    }
+  };
 
   const handleCopy = async () => {
     if (!outputValue) return;
@@ -208,7 +221,32 @@ export const ToolLayout: React.FC<ToolLayoutProps> = ({
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1.5">
+                {onFormatInput && (
+                  <button
+                    type="button"
+                    onClick={handleFormatInput}
+                    disabled={!inputValue.trim()}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-all ${
+                      inputFormatted
+                        ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                        : "bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/60 disabled:opacity-40 disabled:cursor-not-allowed"
+                    }`}
+                    title={t.ui.format}
+                  >
+                    {inputFormatted ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                        <span>{t.ui.formatted}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Code2 className="w-3.5 h-3.5" />
+                        <span>{t.ui.format}</span>
+                      </>
+                    )}
+                  </button>
+                )}
                 {onInputChange && (
                   <>
                     <button
