@@ -2,6 +2,11 @@ mod diff;
 mod log_grep;
 mod color_picker;
 
+#[tauri::command]
+fn save_binary_file(path: String, data: Vec<u8>) -> Result<(), String> {
+    std::fs::write(&path, data).map_err(|e| e.to_string())
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::default().build())
@@ -25,6 +30,7 @@ pub fn run() {
             log_grep::export_search_results,
             color_picker::start_eyedropper,
             color_picker::cancel_eyedropper,
+            save_binary_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

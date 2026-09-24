@@ -28,6 +28,7 @@ import {
   CheckCheck,
   SearchCode,
   FolderSync,
+  Lock,
 } from "lucide-react";
 import { CategoryDefinition, ToolDefinition } from "./types";
 import { Language, getTranslation } from "../i18n";
@@ -73,6 +74,12 @@ import { ColorPickerTool } from "./color-picker/ColorPickerTool";
 import { ColorBlindnessSimulator } from "./color-blindness/ColorBlindnessSimulator";
 import { XmlValidator } from "./xml-validator/XmlValidator";
 import { JsonPathTester } from "./jsonpath-tester/JsonPathTester";
+
+import { JsonToCodeConverter } from "./json-to-code/JsonToCodeConverter";
+import { CurlConverter } from "./curl-converter/CurlConverter";
+import { ChmodCalculator } from "./chmod-calculator/ChmodCalculator";
+import { DummyFileGenerator } from "./dummy-file-generator/DummyFileGenerator";
+import { BoundaryTester } from "./boundary-tester/BoundaryTester";
 
 export const CATEGORIES: CategoryDefinition[] = [
   {
@@ -159,6 +166,44 @@ export const TOOLS: ToolDefinition[] = [
     icon: Table,
     keywords: ["json", "csv", "table", "tsv", "excel", "export", "flatten"],
     component: JsonCsvConverter,
+  },
+  {
+    id: "json-to-code",
+    title: "JSON to Code / Types Converter",
+    description: "Generate TypeScript, Go Structs, Python Pydantic, Rust Serde, Java and C# models directly from JSON",
+    category: "converters",
+    icon: Code2,
+    keywords: ["json", "typescript", "golang", "go", "python", "pydantic", "rust", "serde", "java", "csharp", "c#", "types", "interface", "struct", "model"],
+    component: JsonToCodeConverter,
+  },
+  {
+    id: "curl-converter",
+    title: "cURL to Automation & Code Converter",
+    description: "Convert cURL commands into Playwright, Cypress, Postman, k6, RestAssured, Fetch, Axios, and Python scripts",
+    category: "converters",
+    icon: Globe,
+    keywords: [
+      "curl",
+      "bash",
+      "playwright",
+      "cypress",
+      "postman",
+      "k6",
+      "restassured",
+      "fetch",
+      "axios",
+      "python",
+      "requests",
+      "go",
+      "rust",
+      "php",
+      "http",
+      "api",
+      "request",
+      "automation",
+      "test",
+    ],
+    component: CurlConverter,
   },
 
   // 2. Encoders / Decoders (7)
@@ -301,6 +346,39 @@ export const TOOLS: ToolDefinition[] = [
     keywords: ["token", "nanoid", "random", "secret", "key", "alphanumeric"],
     component: TokenGenerator,
   },
+  {
+    id: "chmod-calculator",
+    title: "Chmod / Linux Permissions Calculator",
+    description: "Interactive calculator for Linux file permissions with octal numbers, symbolic strings, presets, and terminal commands",
+    category: "generators",
+    icon: Lock,
+    keywords: ["chmod", "linux", "permissions", "unix", "octal", "rwx", "755", "644", "777", "file", "security", "chown"],
+    component: ChmodCalculator,
+  },
+  {
+    id: "dummy-file-generator",
+    title: "Dummy / Mock File Generator",
+    description: "Generate mock files with exact byte sizes, valid magic headers, or corrupted signatures for upload testing",
+    category: "generators",
+    icon: FileArchive,
+    keywords: [
+      "dummy",
+      "mock",
+      "file",
+      "generator",
+      "upload",
+      "size",
+      "bytes",
+      "corrupt",
+      "pdf",
+      "png",
+      "zip",
+      "tester",
+      "qa",
+      "tạo file",
+    ],
+    component: DummyFileGenerator,
+  },
 
   // 5. Text Utilities (5)
   {
@@ -412,6 +490,30 @@ export const TOOLS: ToolDefinition[] = [
     icon: SearchCode,
     keywords: ["jsonpath", "query", "json", "filter", "xpath", "extract"],
     component: JsonPathTester,
+  },
+  {
+    id: "boundary-tester",
+    title: "Boundary & Test Case Suggester",
+    description: "Generate Boundary Value Analysis (BVA), Equivalence Partitioning, and Security Fuzzing payloads for test design",
+    category: "graphic",
+    icon: CheckCheck,
+    keywords: [
+      "boundary",
+      "bva",
+      "equivalence",
+      "partitioning",
+      "testcase",
+      "tester",
+      "qa",
+      "fuzzing",
+      "xss",
+      "sqli",
+      "payload",
+      "edgecase",
+      "kiểm thử",
+      "biên",
+    ],
+    component: BoundaryTester,
   },
 ];
 

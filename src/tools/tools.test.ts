@@ -6,16 +6,46 @@ import { TOOLS, CATEGORIES } from "./index";
 import { encodeUtf8Base64, decodeUtf8Base64 } from "./base64-converter/base64Utils";
 import { filterLogLines } from "./log-grep/logFilterEngine";
 import { LOG_PRESETS } from "./log-grep/presets";
+import { generateCodeFromJson } from "./json-to-code/jsonToCodeEngine";
+import { parseCurlCommand, convertCurlToCode } from "./curl-converter/curlParserEngine";
+import {
+  parseOctalToState,
+  getOctalString,
+  getSymbolicString,
+  parseSymbolicToState,
+  getChmodCommands,
+  DEFAULT_CHMOD_STATE,
+} from "./chmod-calculator/chmodEngine";
+import {
+  convertToBytes,
+  formatBytes,
+  generateDummyBuffer,
+  SUPPORTED_FORMATS,
+} from "./dummy-file-generator/dummyFileEngine";
+import {
+  generateStringBoundaryCases,
+  generateNumberBoundaryCases,
+  generateEmailBoundaryCases,
+  exportToMarkdownTable,
+  exportToCsv,
+  SECURITY_PAYLOADS,
+  getSecurityPayloads,
+} from "./boundary-tester/boundaryEngine";
 
 describe("Tool Logic Tests", () => {
-  it("verifies that all 32 DevToys tools are registered", () => {
-    expect(TOOLS.length).toBe(32);
+  it("verifies that all 37 DevToys tools are registered", () => {
+    expect(TOOLS.length).toBe(37);
     expect(CATEGORIES.length).toBe(6);
 
     const ids = new Set(TOOLS.map((t) => t.id));
-    expect(ids.size).toBe(32); // All IDs must be unique
+    expect(ids.size).toBe(37); // All IDs must be unique
     expect(ids.has("file-folder-diff")).toBe(true);
     expect(ids.has("log-grep")).toBe(true);
+    expect(ids.has("json-to-code")).toBe(true);
+    expect(ids.has("curl-converter")).toBe(true);
+    expect(ids.has("chmod-calculator")).toBe(true);
+    expect(ids.has("dummy-file-generator")).toBe(true);
+    expect(ids.has("boundary-tester")).toBe(true);
   });
 
   describe("MD5 Generator", () => {
@@ -573,6 +603,311 @@ describe("Tool Logic Tests", () => {
       const minified = formatXml(input, "minified", "inline");
       expect(minified).toBe('<catalog><book id="1"><title>XML Guide</title></book></catalog>');
       expect(minified).not.toContain("<!--");
+    });
+  });
+
+  describe("JSON to Code / Types Generator", () => {
+    const sampleJson = JSON.stringify({
+      id: 42,
+      name: "Alice",
+      isActive: true,
+      tags: ["admin", "staff"],
+      meta: { created_at: "2026-01-01", count: 10 },
+    });
+
+    it("generates TypeScript interface with nested types", () => {
+      const code = generateCodeFromJson(sampleJson, {
+        rootName: "User",
+        language: "typescript-interface",
+        optionalFields: false,
+        separateNested: true,
+      });
+      expect(code).toContain("export interface User");
+      expect(code).toContain("id: number;");
+      expect(code).toContain("name: string;");
+      expect(code).toContain("isActive: boolean;");
+      expect(code).toContain("tags: string[];");
+      expect(code).toContain("meta: UserMeta;");
+    });
+
+    it("generates Go Structs with json tags", () => {
+      const code = generateCodeFromJson(sampleJson, {
+        rootName: "User",
+        language: "golang",
+        optionalFields: true,
+        separateNested: true,
+      });
+      expect(code).toContain("type User struct");
+      expect(code).toContain('Id int64 `json:"id,omitempty"`');
+      expect(code).toContain('Name string `json:"name,omitempty"`');
+      expect(code).toContain("Tags []string");
+    });
+
+    it("generates Python Pydantic models with Field aliases", () => {
+      const code = generateCodeFromJson(sampleJson, {
+        rootName: "User",
+        language: "python-pydantic",
+        optionalFields: false,
+        separateNested: true,
+      });
+      expect(code).toContain("class User(BaseModel):");
+      expect(code).toContain("is_active: bool = Field(alias=\"isActive\")");
+    });
+
+    it("generates Rust Serde Structs", () => {
+      const code = generateCodeFromJson(sampleJson, {
+        rootName: "User",
+        language: "rust-serde",
+        optionalFields: false,
+        separateNested: true,
+      });
+      expect(code).toContain("pub struct User");
+      expect(code).toContain("pub id: i64,");
+      expect(code).toContain("pub tags: Vec<String>,");
+    });
+  });
+
+  describe("cURL to Code Converter", () => {
+    const curlSample = `curl -X POST 'https://api.example.com/v1/auth' \\
+      -H 'Content-Type: application/json' \\
+      -H 'Authorization: Bearer token123' \\
+      --data-raw '{"email":"test@example.com"}'`;
+
+    it("parses cURL into method, url, headers, and body", () => {
+      const parsed = parseCurlCommand(curlSample);
+      expect(parsed.method).toBe("POST");
+      expect(parsed.rawUrl).toBe("https://api.example.com/v1/auth");
+      expect(parsed.headers["Content-Type"]).toBe("application/json");
+      expect(parsed.headers["Authorization"]).toBe("Bearer token123");
+      expect(parsed.data).toContain("test@example.com");
+    });
+
+    it("converts cURL to JavaScript Fetch", () => {
+      const code = convertCurlToCode(curlSample, "javascript-fetch");
+      expect(code).toContain("fetch(url, options)");
+      expect(code).toContain('method: "POST"');
+      expect(code).toContain('"Authorization": "Bearer token123"');
+    });
+
+    it("converts cURL to Python Requests", () => {
+      const code = convertCurlToCode(curlSample, "python-requests");
+      expect(code).toContain("import requests");
+      expect(code).toContain("response = requests.post(");
+      expect(code).toContain("headers=headers");
+    });
+
+    it("converts cURL to Go net/http", () => {
+      const code = convertCurlToCode(curlSample, "golang-nethttp");
+      expect(code).toContain('http.NewRequest("POST"');
+      expect(code).toContain("req.Header.Add");
+    });
+
+    it("converts cURL to Playwright API test", () => {
+      const code = convertCurlToCode(curlSample, "playwright-test");
+      expect(code).toContain("import { test, expect } from '@playwright/test'");
+      expect(code).toContain("await request.fetch(");
+      expect(code).toContain("expect(response.ok()).toBeTruthy()");
+    });
+
+    it("converts cURL to Cypress cy.request test", () => {
+      const code = convertCurlToCode(curlSample, "cypress-cy-request");
+      expect(code).toContain("cy.request({");
+      expect(code).toContain('method: "POST"');
+      expect(code).toContain("expect(response.status).to.be.oneOf([200, 201, 204])");
+    });
+
+    it("converts cURL to Postman Collection JSON", () => {
+      const code = convertCurlToCode(curlSample, "postman-collection");
+      const collection = JSON.parse(code);
+      expect(collection.info.name).toBe("Exported cURL Collection");
+      expect(collection.item[0].request.method).toBe("POST");
+      expect(collection.item[0].request.url.raw).toBe("https://api.example.com/v1/auth");
+    });
+
+    it("converts cURL to k6 load test script", () => {
+      const code = convertCurlToCode(curlSample, "k6-load-test");
+      expect(code).toContain("import http from 'k6/http'");
+      expect(code).toContain("http.request(");
+      expect(code).toContain("'status is 200': (r) => r.status === 200");
+    });
+
+    it("converts cURL to Java RestAssured", () => {
+      const code = convertCurlToCode(curlSample, "java-restassured");
+      expect(code).toContain("import io.restassured.RestAssured;");
+      expect(code).toContain(".post(");
+      expect(code).toContain(".statusCode(200)");
+    });
+  });
+
+  describe("Linux Chmod Permissions Calculator", () => {
+    it("converts default 755 state to octal and symbolic string", () => {
+      expect(getOctalString(DEFAULT_CHMOD_STATE)).toBe("755");
+      expect(getSymbolicString(DEFAULT_CHMOD_STATE)).toBe("-rwxr-xr-x");
+    });
+
+    it("parses octal string 644 into correct permission state", () => {
+      const state = parseOctalToState("644", DEFAULT_CHMOD_STATE);
+      expect(state.owner).toEqual({ read: true, write: true, execute: false });
+      expect(state.group).toEqual({ read: true, write: false, execute: false });
+      expect(state.others).toEqual({ read: true, write: false, execute: false });
+      expect(getSymbolicString(state)).toBe("-rw-r--r--");
+    });
+
+    it("handles special bits (SetUID, SetGID, Sticky Bit)", () => {
+      const stickyState = parseOctalToState("1777", DEFAULT_CHMOD_STATE);
+      expect(stickyState.special.sticky).toBe(true);
+      expect(getSymbolicString(stickyState)).toBe("-rwxrwxrwt");
+      expect(getOctalString(stickyState)).toBe("1777");
+    });
+
+    it("generates correct terminal commands", () => {
+      const state = parseOctalToState("700", DEFAULT_CHMOD_STATE);
+      const cmds = getChmodCommands(state, "secret_dir");
+      expect(cmds.numeric).toBe("chmod 700 secret_dir");
+      expect(cmds.symbolic).toBe("chmod u=rwx,g=-,o=- secret_dir");
+      expect(cmds.recursive).toBe("chmod -R 700 ./folder");
+    });
+
+    it("parses symbolic string back to state", () => {
+      const state = parseSymbolicToState("rwxr-xr-x", DEFAULT_CHMOD_STATE);
+      expect(getOctalString(state)).toBe("755");
+    });
+  });
+
+  describe("Dummy / Mock File Generator Logic", () => {
+    it("calculates exact byte conversions across units", () => {
+      expect(convertToBytes(0, "B")).toBe(0);
+      expect(convertToBytes(500, "KB")).toBe(512000);
+      expect(convertToBytes(2, "MB")).toBe(2097152);
+      expect(convertToBytes(1, "GB")).toBe(1073741824);
+    });
+
+    it("formats bytes into human-readable strings", () => {
+      expect(formatBytes(0)).toBe("0 Bytes");
+      expect(formatBytes(1024)).toBe("1 KB");
+      expect(formatBytes(1048576 * 2.5)).toBe("2.5 MB");
+    });
+
+    it("generates exact buffer sizes for dummy files", () => {
+      const buffer = generateDummyBuffer({
+        filename: "test.pdf",
+        format: "pdf",
+        sizeBytes: 1024,
+        pattern: "random",
+      });
+      expect(buffer.length).toBe(1024);
+    });
+
+    it("embeds correct magic bytes for PDF, PNG, and ZIP headers", () => {
+      const pdfBuf = generateDummyBuffer({
+        filename: "test.pdf",
+        format: "pdf",
+        sizeBytes: 100,
+        pattern: "random",
+      });
+      // %PDF-1.4 = [0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34]
+      expect(Array.from(pdfBuf.slice(0, 8))).toEqual(SUPPORTED_FORMATS.pdf.magicBytes);
+
+      const pngBuf = generateDummyBuffer({
+        filename: "image.png",
+        format: "png",
+        sizeBytes: 100,
+        pattern: "zeros",
+      });
+      expect(Array.from(pngBuf.slice(0, 8))).toEqual(SUPPORTED_FORMATS.png.magicBytes);
+
+      const zipBuf = generateDummyBuffer({
+        filename: "archive.zip",
+        format: "zip",
+        sizeBytes: 50,
+        pattern: "random",
+      });
+      expect(Array.from(zipBuf.slice(0, 4))).toEqual([0x50, 0x4b, 0x03, 0x04]);
+    });
+
+    it("corrupts magic headers when corruptHeader option is enabled", () => {
+      const corruptBuf = generateDummyBuffer({
+        filename: "corrupt.pdf",
+        format: "pdf",
+        sizeBytes: 100,
+        pattern: "random",
+        corruptHeader: true,
+      });
+      expect(Array.from(corruptBuf.slice(0, 4))).toEqual([0, 0, 0, 0]);
+    });
+  });
+
+  describe("Boundary & Test Case Suggester Logic", () => {
+    it("generates complete boundary value analysis for string length", () => {
+      const cases = generateStringBoundaryCases({
+        minLength: 6,
+        maxLength: 20,
+        charset: "alphanumeric",
+      });
+
+      const titles = cases.map((c) => c.title);
+      expect(titles.some((t) => t.includes("Below Min Boundary (5 chars)"))).toBe(true);
+      expect(titles.some((t) => t.includes("Exact Minimum Boundary (6 chars)"))).toBe(true);
+      expect(titles.some((t) => t.includes("Exact Maximum Boundary (20 chars)"))).toBe(true);
+      expect(titles.some((t) => t.includes("Exceeding Maximum (21 chars)"))).toBe(true);
+
+      const invalidCases = cases.filter((c) => c.type === "Invalid");
+      expect(invalidCases.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("generates number range boundary cases with step calculations", () => {
+      const cases = generateNumberBoundaryCases({
+        minValue: 10,
+        maxValue: 50,
+        allowDecimals: false,
+        decimalPlaces: 2,
+      });
+
+      expect(cases.find((c) => c.id === "num-below-min")?.testValue).toBe("9");
+      expect(cases.find((c) => c.id === "num-at-min")?.testValue).toBe("10");
+      expect(cases.find((c) => c.id === "num-at-max")?.testValue).toBe("50");
+      expect(cases.find((c) => c.id === "num-above-max")?.testValue).toBe("51");
+    });
+
+    it("exports test cases to Markdown table and CSV formats", () => {
+      const cases = generateEmailBoundaryCases();
+      const md = exportToMarkdownTable(cases);
+      expect(md).toContain("| Category | Type | Test Case Title | Test Input Value | Expected Behavior |");
+      expect(md).toContain("tester.qa@example.com");
+
+      const csv = exportToCsv(cases);
+      expect(csv).toContain('"Category","Type","Title","Test Value","Expected Result","Description"');
+      expect(csv).toContain("Standard Valid Email");
+    });
+
+    it("provides comprehensive security fuzzing payloads (XSS, SQLi, LFI, OS Command)", () => {
+      expect(SECURITY_PAYLOADS.length).toBeGreaterThanOrEqual(15);
+      const groups = new Set(SECURITY_PAYLOADS.map((p) => p.group));
+      expect(groups.has("XSS")).toBe(true);
+      expect(groups.has("SQL Injection")).toBe(true);
+      expect(groups.has("NoSQL Injection")).toBe(true);
+      expect(groups.has("Command Injection")).toBe(true);
+      expect(groups.has("Path Traversal")).toBe(true);
+      expect(groups.has("String Breakers")).toBe(true);
+    });
+
+    it("supports Vietnamese localization for BVA cases and security payloads", () => {
+      const viCases = generateStringBoundaryCases(
+        { minLength: 6, maxLength: 20, charset: "alphanumeric" },
+        "vi"
+      );
+      expect(viCases.some((c) => c.title.includes("Đúng ngưỡng tối thiểu (6 ký tự)"))).toBe(true);
+      expect(viCases.some((c) => c.category === "Giá trị biên")).toBe(true);
+      expect(viCases.some((c) => c.expectedResult === "Chấp nhận / Thành công")).toBe(true);
+
+      const viEmailCases = generateEmailBoundaryCases("vi");
+      expect(viEmailCases.some((c) => c.title.includes("Email hợp lệ"))).toBe(true);
+      const viMd = exportToMarkdownTable(viEmailCases, "vi");
+      expect(viMd).toContain("| Phân loại | Kiểu | Tên Test Case | Giá trị kiểm thử | Hành vi kỳ vọng |");
+
+      const viPayloads = getSecurityPayloads("vi");
+      expect(viPayloads.some((p) => p.name === "Thẻ Script Cổ Điển")).toBe(true);
+      expect(viPayloads.some((p) => p.name.includes("Vượt Xác Thực Cổ Điển"))).toBe(true);
     });
   });
 });
