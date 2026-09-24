@@ -165,6 +165,32 @@ describe("Tool Logic Tests", () => {
       expect(encoded).toContain("%2F");
       expect(decodeURIComponent(encoded)).toBe(input);
     });
+
+    it("parses decoded segments correctly with parseUrlDecode", async () => {
+      const { parseUrlDecode, parseUrlEncode } = await import("./url-encoder/urlUtils");
+
+      const encodedStr = "https%3A%2F%2Fexample.com%2Fsearch%3Fq%3Dhello%20world";
+      const decodedSegments = parseUrlDecode(encodedStr, false);
+
+      expect(decodedSegments.length).toBeGreaterThan(1);
+      const decodedOnly = decodedSegments.filter((s) => s.isChanged);
+      expect(decodedOnly.map((s) => s.original)).toEqual(["%3A", "%2F", "%2F", "%2F", "%3F", "%3D", "%20"]);
+      expect(decodedOnly.map((s) => s.text)).toEqual([":", "/", "/", "/", "?", "=", " "]);
+      expect(decodedSegments.map((s) => s.text).join("")).toBe("https://example.com/search?q=hello world");
+
+      // Test multi-byte UTF-8 emoji & Vietnamese characters
+      const utf8Encoded = "Xin%20ch%C3%A0o%20%F0%9F%98%80";
+      const utf8DecodedSegments = parseUrlDecode(utf8Encoded, false);
+      const utf8DecodedOnly = utf8DecodedSegments.filter((s) => s.isChanged);
+      expect(utf8DecodedOnly.map((s) => s.original)).toEqual(["%20", "%C3%A0", "%20", "%F0%9F%98%80"]);
+      expect(utf8DecodedOnly.map((s) => s.text)).toEqual([" ", "à", " ", "😀"]);
+      expect(utf8DecodedSegments.map((s) => s.text).join("")).toBe("Xin chào 😀");
+
+      // Test encode mode parser
+      const plainText = "hello world!";
+      const encodeSegments = parseUrlEncode(plainText, false);
+      expect(encodeSegments.find((s) => s.isChanged)?.text).toBe("%20");
+    });
   });
 
   describe("JWT Decoder logic", () => {

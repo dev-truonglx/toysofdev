@@ -236,6 +236,7 @@ export const vi: TranslationSchema = {
     inlineAttributes: "Cùng dòng (Inline)",
     multilineAttributes: "Mỗi thuộc tính 1 dòng",
     switchInputOutput: "Đổi chỗ Đầu vào/Đầu ra",
+    highlightDecoded: "Highlight ký tự decode",
     uppercase: "Chữ hoa",
     lowercase: "Chữ thường",
     hyphens: "Dấu gạch nối",

@@ -1,5 +1,6 @@
 mod diff;
 mod log_grep;
+mod color_picker;
 
 pub fn run() {
     tauri::Builder::default()
@@ -21,6 +22,8 @@ pub fn run() {
             log_grep::get_lines,
             log_grep::get_search_results,
             log_grep::export_search_results,
+            color_picker::start_eyedropper,
+            color_picker::cancel_eyedropper,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

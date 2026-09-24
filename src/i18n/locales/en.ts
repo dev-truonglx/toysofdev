@@ -236,6 +236,7 @@ export const en: TranslationSchema = {
     inlineAttributes: "Inline (Single line)",
     multilineAttributes: "One per line",
     switchInputOutput: "Swap Input/Output",
+    highlightDecoded: "Highlight decoded",
     uppercase: "Uppercase",
     lowercase: "Lowercase",
     hyphens: "Hyphens",

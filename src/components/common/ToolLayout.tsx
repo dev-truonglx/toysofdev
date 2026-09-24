@@ -14,9 +14,13 @@ interface ToolLayoutProps {
   inputValue?: string;
   onInputChange?: (value: string) => void;
   inputPlaceholder?: string;
+  inputRef?: React.RefObject<HTMLTextAreaElement>;
+  inputNode?: React.ReactNode;
   outputLabel?: string;
   outputValue?: string;
   outputPlaceholder?: string;
+  outputNode?: React.ReactNode;
+  outputExtraActions?: React.ReactNode;
   error?: string | null;
   customPanes?: React.ReactNode;
   actionsRight?: React.ReactNode;
@@ -35,9 +39,13 @@ export const ToolLayout: React.FC<ToolLayoutProps> = ({
   inputValue = "",
   onInputChange,
   inputPlaceholder,
+  inputRef,
+  inputNode,
   outputLabel,
   outputValue = "",
   outputPlaceholder,
+  outputNode,
+  outputExtraActions,
   error,
   customPanes,
   actionsRight,
@@ -113,7 +121,8 @@ export const ToolLayout: React.FC<ToolLayoutProps> = ({
             </span>
           )}
         </div>
-        <div>
+        <div className="flex items-center gap-2">
+          {outputExtraActions}
           <button
             onClick={handleCopy}
             disabled={!outputValue}
@@ -138,13 +147,19 @@ export const ToolLayout: React.FC<ToolLayoutProps> = ({
           </button>
         </div>
       </div>
-      <textarea
-        value={outputValue}
-        readOnly
-        placeholder={finalOutputPlaceholder}
-        spellCheck={false}
-        className="flex-1 w-full p-4 resize-none bg-slate-50/40 dark:bg-slate-950/40 font-mono text-xs leading-relaxed focus:outline-none text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-600"
-      />
+      {outputNode ? (
+        <div className="flex-1 w-full p-4 overflow-auto bg-slate-50/40 dark:bg-slate-950/40 font-mono text-xs leading-relaxed text-slate-800 dark:text-slate-200 whitespace-pre-wrap break-all select-text">
+          {outputNode}
+        </div>
+      ) : (
+        <textarea
+          value={outputValue}
+          readOnly
+          placeholder={finalOutputPlaceholder}
+          spellCheck={false}
+          className="flex-1 w-full p-4 resize-none bg-slate-50/40 dark:bg-slate-950/40 font-mono text-xs leading-relaxed focus:outline-none text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-600"
+        />
+      )}
     </div>
   );
 
@@ -268,13 +283,20 @@ export const ToolLayout: React.FC<ToolLayoutProps> = ({
                 )}
               </div>
             </div>
-            <textarea
-              value={inputValue}
-              onChange={(e) => onInputChange && onInputChange(e.target.value)}
-              placeholder={finalInputPlaceholder}
-              spellCheck={false}
-              className="flex-1 w-full p-4 resize-none bg-transparent font-mono text-xs leading-relaxed focus:outline-none text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-600"
-            />
+            {inputNode ? (
+              <div className="flex-1 w-full p-4 overflow-auto bg-transparent font-mono text-xs leading-relaxed text-slate-800 dark:text-slate-200 whitespace-pre-wrap break-all select-text">
+                {inputNode}
+              </div>
+            ) : (
+              <textarea
+                ref={inputRef}
+                value={inputValue}
+                onChange={(e) => onInputChange && onInputChange(e.target.value)}
+                placeholder={finalInputPlaceholder}
+                spellCheck={false}
+                className="flex-1 w-full p-4 resize-none bg-transparent font-mono text-xs leading-relaxed focus:outline-none text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-600"
+              />
+            )}
           </div>
 
           {/* Output Box */}

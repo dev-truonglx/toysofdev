@@ -91,6 +91,7 @@ export interface TranslationSchema {
     inlineAttributes: string;
     multilineAttributes: string;
     switchInputOutput: string;
+    highlightDecoded: string;
     uppercase: string;
     lowercase: string;
     hyphens: string;

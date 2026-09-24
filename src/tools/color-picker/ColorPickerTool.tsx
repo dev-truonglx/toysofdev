@@ -1,12 +1,44 @@
-import React, { useState } from "react";
-import { Palette, CheckCircle2, XCircle } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { Palette, CheckCircle2, XCircle, MousePointer2 } from "lucide-react";
 import { ToolLayout } from "../../components/common/ToolLayout";
 import { useTranslation } from "../../i18n";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 export const ColorPickerTool: React.FC = () => {
   const { t } = useTranslation();
   const [fgColor, setFgColor] = useState("#ffffff");
   const [bgColor, setBgColor] = useState("#4f46e5");
+  const [isPicking, setIsPicking] = useState(false);
+  const pickTarget = useRef<"fg" | "bg" | null>(null);
+  
+  // Only show the custom picker on Windows where WebView2 has the multi-monitor bug.
+  // MacOS WebKit handles the native <input type="color"> eyedropper perfectly.
+  const isWindows = navigator.userAgent.includes("Windows");
+
+  useEffect(() => {
+    const unlisten = listen<string>("color-picked", (event) => {
+      if (pickTarget.current === "fg") setFgColor(event.payload);
+      if (pickTarget.current === "bg") setBgColor(event.payload);
+      pickTarget.current = null;
+      setIsPicking(false);
+    });
+    return () => {
+      unlisten.then((f) => f());
+    };
+  }, []);
+
+  const startPicking = async (target: "fg" | "bg") => {
+    try {
+      pickTarget.current = target;
+      setIsPicking(true);
+      await invoke("start_eyedropper");
+    } catch (e) {
+      console.error(e);
+      pickTarget.current = null;
+      setIsPicking(false);
+    }
+  };
 
   const hexToRgb = (hex: string): [number, number, number] => {
     let clean = hex.replace("#", "");
@@ -75,8 +107,18 @@ export const ColorPickerTool: React.FC = () => {
                   type="text"
                   value={fgColor}
                   onChange={(e) => setFgColor(e.target.value)}
-                  className="flex-1 px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-mono text-xs focus:ring-2 focus:ring-indigo-500"
+                  className="flex-1 px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-mono text-xs focus:ring-2 focus:ring-indigo-500 min-w-0"
                 />
+                {isWindows && (
+                  <button
+                    onClick={() => startPicking("fg")}
+                    disabled={isPicking}
+                    className={`p-2 rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ${isPicking && pickTarget.current === "fg" ? "ring-2 ring-indigo-500" : ""}`}
+                    title="Pick from Screen"
+                  >
+                    <MousePointer2 className={`w-4 h-4 ${isPicking && pickTarget.current === "fg" ? "text-indigo-500 animate-pulse" : "text-slate-500"}`} />
+                  </button>
+                )}
               </div>
             </div>
 
@@ -95,8 +137,18 @@ export const ColorPickerTool: React.FC = () => {
                   type="text"
                   value={bgColor}
                   onChange={(e) => setBgColor(e.target.value)}
-                  className="flex-1 px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-mono text-xs focus:ring-2 focus:ring-indigo-500"
+                  className="flex-1 px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-mono text-xs focus:ring-2 focus:ring-indigo-500 min-w-0"
                 />
+                {isWindows && (
+                  <button
+                    onClick={() => startPicking("bg")}
+                    disabled={isPicking}
+                    className={`p-2 rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ${isPicking && pickTarget.current === "bg" ? "ring-2 ring-indigo-500" : ""}`}
+                    title="Pick from Screen"
+                  >
+                    <MousePointer2 className={`w-4 h-4 ${isPicking && pickTarget.current === "bg" ? "text-indigo-500 animate-pulse" : "text-slate-500"}`} />
+                  </button>
+                )}
               </div>
               <div className="text-[11px] text-slate-400 font-mono">
                 RGB: rgb({bgR}, {bgG}, {bgB})
