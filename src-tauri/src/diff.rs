@@ -404,6 +404,70 @@ pub async fn compute_text_diff(
     .map_err(|e| e.to_string())?
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileInfoResult {
+    pub name: String,
+    pub path: String,
+    pub size: u64,
+    pub content: Option<String>,
+    pub is_binary: bool,
+    pub line_count: Option<usize>,
+}
+
+#[tauri::command]
+pub async fn read_file_for_diff(path: String) -> Result<FileInfoResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let p = std::path::Path::new(&path);
+        if !p.exists() {
+            return Err("File does not exist".to_string());
+        }
+        if p.is_dir() {
+            return Err("Path is a directory".to_string());
+        }
+
+        let metadata = std::fs::metadata(p).map_err(|e| e.to_string())?;
+        let size = metadata.len();
+        let name = p
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| path.clone());
+
+        // Check if binary by reading up to 512 bytes
+        let mut file = std::fs::File::open(p).map_err(|e| e.to_string())?;
+        use std::io::Read;
+        let mut buffer = [0u8; 512];
+        let bytes_read = file.read(&mut buffer).unwrap_or(0);
+        let is_binary = buffer[..bytes_read].contains(&0);
+
+        if is_binary {
+            return Ok(FileInfoResult {
+                name,
+                path,
+                size,
+                content: None,
+                is_binary: true,
+                line_count: None,
+            });
+        }
+
+        // Read text
+        let content = std::fs::read_to_string(p).map_err(|e| e.to_string())?;
+        let line_count = content.lines().count();
+
+        Ok(FileInfoResult {
+            name,
+            path,
+            size,
+            content: Some(content),
+            is_binary: false,
+            line_count: Some(line_count),
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

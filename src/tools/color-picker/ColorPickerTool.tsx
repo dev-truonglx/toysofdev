@@ -17,14 +17,39 @@ export const ColorPickerTool: React.FC = () => {
   const isWindows = navigator.userAgent.includes("Windows");
 
   useEffect(() => {
-    const unlisten = listen<string>("color-picked", (event) => {
+    let unlistenPicked: (() => void) | null = null;
+    let unlistenCancelled: (() => void) | null = null;
+
+    listen<string>("color-picked", (event) => {
       if (pickTarget.current === "fg") setFgColor(event.payload);
       if (pickTarget.current === "bg") setBgColor(event.payload);
       pickTarget.current = null;
       setIsPicking(false);
+    }).then((unsub) => {
+      unlistenPicked = unsub;
     });
+
+    listen("color-pick-cancelled", () => {
+      pickTarget.current = null;
+      setIsPicking(false);
+    }).then((unsub) => {
+      unlistenCancelled = unsub;
+    });
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        invoke("cancel_eyedropper");
+        pickTarget.current = null;
+        setIsPicking(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+
     return () => {
-      unlisten.then((f) => f());
+      if (unlistenPicked) unlistenPicked();
+      if (unlistenCancelled) unlistenCancelled();
+      window.removeEventListener("keydown", handleKeyDown);
+      invoke("cancel_eyedropper");
     };
   }, []);
 

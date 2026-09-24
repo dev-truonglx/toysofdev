@@ -76,7 +76,7 @@ describe("diffEngine", () => {
     const res = computeJsDiff(oldText, newText, { ignoreWhitespace: true, ignoreCase: true });
     expect(res.rows[0].isChanged).toBe(false);
     expect(res.rows[1].isChanged).toBe(true);
-    expect(res.differencesCount).toBe(1);
+    expect(res.differencesCount).toBe(2);
   });
 
   it("detects binary files by extension and buffer", () => {

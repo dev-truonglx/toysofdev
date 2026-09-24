@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import {
   FolderSync,
   Folder,
@@ -143,6 +144,34 @@ export const FileFolderDiffComparer: React.FC = () => {
   const fileBInputRef = useRef<HTMLInputElement>(null);
   const folderAInputRef = useRef<HTMLInputElement>(null);
   const folderBInputRef = useRef<HTMLInputElement>(null);
+  const leftCardRef = useRef<HTMLDivElement>(null);
+  const rightCardRef = useRef<HTMLDivElement>(null);
+
+  // Helper to load file via Tauri Rust command (when dropped natively or by path)
+  const loadFileFromPath = async (path: string): Promise<FileItem | null> => {
+    try {
+      const res = await invoke<{
+        name: string;
+        path: string;
+        size: number;
+        content?: string;
+        isBinary: boolean;
+        lineCount?: number;
+      }>("read_file_for_diff", { path });
+
+      return {
+        name: res.name,
+        path: res.path,
+        size: res.size,
+        content: res.content,
+        isBinary: res.isBinary,
+        lineCount: res.lineCount,
+      };
+    } catch (err) {
+      console.error("Failed to read file from path:", err);
+      return null;
+    }
+  };
 
   // Helper: Read file metadata and check binary
   const createFileItem = async (file: File, customPath?: string, eagerText = false): Promise<FileItem> => {
@@ -205,17 +234,194 @@ export const FileFolderDiffComparer: React.FC = () => {
         item.isBinary = true;
         return { ...item, isBinary: true };
       }
+    } else if (item.path) {
+      const loaded = await loadFileFromPath(item.path);
+      if (loaded) return loaded;
     }
     return item;
   }, []);
 
+  const fileARef = useRef<FileItem | null>(null);
+  const fileBRef = useRef<FileItem | null>(null);
+
+  useEffect(() => {
+    fileARef.current = fileA;
+  }, [fileA]);
+
+  useEffect(() => {
+    fileBRef.current = fileB;
+  }, [fileB]);
+
+  // 2-File Drag & Drop hover and counter states
+  const [dragOverCard, setDragOverCard] = useState<"left" | "right" | null>(null);
+  const dragCounterRef = useRef(0);
+
+  // Tauri native window drag & drop listener
+  useEffect(() => {
+    if (mode !== "file") return;
+
+    let unlisten: (() => void) | undefined;
+
+    const initTauriDragDrop = async () => {
+      try {
+        const { getCurrentWebview } = await import("@tauri-apps/api/webview");
+        const unlistenFn = await getCurrentWebview().onDragDropEvent(async (event) => {
+          const payload = event.payload;
+          if (payload.type === "over" || payload.type === "enter") {
+            setIsDraggingGlobal(true);
+            const pos = payload.position;
+            if (pos) {
+              const rectA = leftCardRef.current?.getBoundingClientRect();
+              const rectB = rightCardRef.current?.getBoundingClientRect();
+              if (
+                rectA &&
+                pos.x >= rectA.left &&
+                pos.x <= rectA.right &&
+                pos.y >= rectA.top &&
+                pos.y <= rectA.bottom
+              ) {
+                setDragOverCard("left");
+              } else if (
+                rectB &&
+                pos.x >= rectB.left &&
+                pos.x <= rectB.right &&
+                pos.y >= rectB.top &&
+                pos.y <= rectB.bottom
+              ) {
+                setDragOverCard("right");
+              } else {
+                setDragOverCard(null);
+              }
+            }
+          } else if (payload.type === "leave") {
+            setIsDraggingGlobal(false);
+            setDragOverCard(null);
+          } else if (payload.type === "drop") {
+            setIsDraggingGlobal(false);
+            setDragOverCard(null);
+
+            const paths = payload.paths;
+            if (!paths || paths.length === 0) return;
+
+            if (paths.length >= 2) {
+              const itemA = await loadFileFromPath(paths[0]);
+              const itemB = await loadFileFromPath(paths[1]);
+              if (itemA) setFileA(itemA);
+              if (itemB) setFileB(itemB);
+            } else {
+              const item = await loadFileFromPath(paths[0]);
+              if (!item) return;
+
+              const pos = payload.position;
+              const rectA = leftCardRef.current?.getBoundingClientRect();
+              const rectB = rightCardRef.current?.getBoundingClientRect();
+
+              if (
+                rectA &&
+                pos &&
+                pos.x >= rectA.left &&
+                pos.x <= rectA.right &&
+                pos.y >= rectA.top &&
+                pos.y <= rectA.bottom
+              ) {
+                // Drop specifically on File A (Original) card
+                setFileA(item);
+              } else if (
+                rectB &&
+                pos &&
+                pos.x >= rectB.left &&
+                pos.x <= rectB.right &&
+                pos.y >= rectB.top &&
+                pos.y <= rectB.bottom
+              ) {
+                // Drop specifically on File B (Modified) card
+                setFileB(item);
+              } else {
+                // Dropped outside specific input cards (e.g. on result frame):
+                // Prioritize File A (Original); if File A already has a file, populate File B (Modified)
+                if (!fileARef.current) {
+                  setFileA(item);
+                } else {
+                  setFileB(item);
+                }
+              }
+            }
+          }
+        });
+        unlisten = unlistenFn;
+      } catch (err) {
+        console.warn("Tauri drag-drop listener not active:", err);
+      }
+    };
+
+    initTauriDragDrop();
+
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, [mode]);
+
+  // Helper to safely extract files from drag event (HTML5 web fallback)
+  const extractFilesFromEvent = (e: React.DragEvent): File[] => {
+    const result: File[] = [];
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      for (let i = 0; i < e.dataTransfer.files.length; i++) {
+        const file = e.dataTransfer.files[i];
+        if (file) result.push(file);
+      }
+    } else if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      for (let i = 0; i < e.dataTransfer.items.length; i++) {
+        const item = e.dataTransfer.items[i];
+        if (item.kind === "file") {
+          const file = item.getAsFile();
+          if (file) result.push(file);
+        }
+      }
+    }
+    return result;
+  };
+
   // Drag & drop handlers for 2-File Mode
+  const handleGlobalDragEnter = (e: React.DragEvent) => {
+    if (mode !== "file") return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current += 1;
+    if (dragCounterRef.current === 1) {
+      setIsDraggingGlobal(true);
+    }
+  };
+
+  const handleGlobalDragOver = (e: React.DragEvent) => {
+    if (mode !== "file") return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "copy";
+    if (!isDraggingGlobal) {
+      setIsDraggingGlobal(true);
+    }
+  };
+
+  const handleGlobalDragLeave = (e: React.DragEvent) => {
+    if (mode !== "file") return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current -= 1;
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      setIsDraggingGlobal(false);
+      setDragOverCard(null);
+    }
+  };
+
   const handleFileDropOnCard = async (e: React.DragEvent, targetSide: "left" | "right") => {
     e.preventDefault();
     e.stopPropagation();
+    dragCounterRef.current = 0;
     setIsDraggingGlobal(false);
+    setDragOverCard(null);
 
-    const droppedFiles = Array.from(e.dataTransfer.files);
+    const droppedFiles = extractFilesFromEvent(e);
     if (droppedFiles.length === 0) return;
 
     if (droppedFiles.length >= 2) {
@@ -232,11 +438,14 @@ export const FileFolderDiffComparer: React.FC = () => {
   };
 
   const handleGlobalFileDrop = async (e: React.DragEvent) => {
+    if (mode !== "file") return;
     e.preventDefault();
     e.stopPropagation();
+    dragCounterRef.current = 0;
     setIsDraggingGlobal(false);
+    setDragOverCard(null);
 
-    const droppedFiles = Array.from(e.dataTransfer.files);
+    const droppedFiles = extractFilesFromEvent(e);
     if (droppedFiles.length === 0) return;
 
     if (droppedFiles.length >= 2) {
@@ -246,18 +455,29 @@ export const FileFolderDiffComparer: React.FC = () => {
       setFileB(itemB);
     } else {
       const item = await createFileItem(droppedFiles[0], undefined, true);
-      if (!fileA) setFileA(item);
-      else setFileB(item);
+      // Dropped on result pane or outside cards:
+      // Prioritize File A (Original); if File A already has a file, populate File B (Modified)
+      if (!fileARef.current) {
+        setFileA(item);
+      } else {
+        setFileB(item);
+      }
     }
   };
 
-  // Reload file from rawFile reference
+  // Reload file from rawFile or disk path
   const handleReloadFile = async (side: "left" | "right") => {
     const target = side === "left" ? fileA : fileB;
     if (target?.rawFile) {
       const updated = await createFileItem(target.rawFile, target.path, true);
       if (side === "left") setFileA(updated);
       else setFileB(updated);
+    } else if (target?.path) {
+      const updated = await loadFileFromPath(target.path);
+      if (updated) {
+        if (side === "left") setFileA(updated);
+        else setFileB(updated);
+      }
     }
   };
 
@@ -914,27 +1134,12 @@ export const FileFolderDiffComparer: React.FC = () => {
       configuration={configurationToolbar}
       customPanes={
         <div
-          onDragOver={(e) => {
-            e.preventDefault();
-            setIsDraggingGlobal(true);
-          }}
-          onDragLeave={() => setIsDraggingGlobal(false)}
+          onDragEnter={handleGlobalDragEnter}
+          onDragOver={handleGlobalDragOver}
+          onDragLeave={handleGlobalDragLeave}
           onDrop={handleGlobalFileDrop}
           className="flex flex-col flex-1 gap-3.5 overflow-hidden relative"
         >
-          {/* Global Drag Overlay */}
-          {isDraggingGlobal && (
-            <div className="absolute inset-0 z-50 bg-indigo-500/15 backdrop-blur-xs border-2 border-dashed border-indigo-500 rounded-2xl flex flex-col items-center justify-center pointer-events-none transition-all">
-              <UploadCloud className="w-12 h-12 text-indigo-600 animate-bounce mb-2" />
-              <p className="text-base font-semibold text-indigo-700 dark:text-indigo-300">
-                Thả 1 hoặc 2 tệp tin vào đây để so sánh
-              </p>
-              <p className="text-xs text-indigo-600/80 dark:text-indigo-400 mt-0.5">
-                (Thả 2 file cùng lúc sẽ tự động nạp vào File A và File B)
-              </p>
-            </div>
-          )}
-
           {/* Hidden File Inputs */}
           <input
             ref={fileAInputRef}
@@ -988,14 +1193,38 @@ export const FileFolderDiffComparer: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 shrink-0">
               {/* File A Card */}
               <div
-                onDragOver={(e) => e.preventDefault()}
+                ref={leftCardRef}
+                onDragEnter={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDragOverCard("left");
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.dataTransfer.dropEffect = "copy";
+                  if (dragOverCard !== "left") setDragOverCard("left");
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (dragOverCard === "left") setDragOverCard(null);
+                }}
                 onDrop={(e) => handleFileDropOnCard(e, "left")}
                 onClick={!fileA ? () => fileAInputRef.current?.click() : undefined}
-                className={`flex flex-col rounded-xl transition-all ${
+                className={
                   fileA
-                    ? "border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden"
-                    : "border-2 border-dashed border-slate-300 dark:border-slate-700/80 hover:border-indigo-400 dark:hover:border-indigo-500 cursor-pointer bg-slate-50/60 dark:bg-slate-900/60 hover:bg-slate-100/60 dark:hover:bg-slate-800/60 p-4 items-center justify-center text-center group shadow-xs"
-                }`}
+                    ? `flex flex-col rounded-xl border shadow-xs overflow-hidden transition-colors duration-150 ${
+                        dragOverCard === "left"
+                          ? "border-indigo-500 bg-indigo-50/40 dark:bg-indigo-950/40 ring-2 ring-indigo-500/30"
+                          : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"
+                      }`
+                    : `flex flex-col rounded-xl border-2 border-dashed p-4 items-center justify-center text-center cursor-pointer min-h-[92px] shadow-xs transition-colors duration-150 group ${
+                        dragOverCard === "left"
+                          ? "border-indigo-500 bg-indigo-50/90 dark:bg-indigo-950/70 ring-2 ring-indigo-500/30"
+                          : "border-slate-300 dark:border-slate-700/80 bg-slate-50/60 dark:bg-slate-900/60 hover:bg-slate-100/60 dark:hover:bg-slate-800/60 hover:border-indigo-400 dark:hover:border-indigo-500"
+                      }`
+                }
               >
                 {fileA ? (
                   <div className="p-3 flex items-center justify-between">
@@ -1057,14 +1286,38 @@ export const FileFolderDiffComparer: React.FC = () => {
 
               {/* File B Card */}
               <div
-                onDragOver={(e) => e.preventDefault()}
+                ref={rightCardRef}
+                onDragEnter={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDragOverCard("right");
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.dataTransfer.dropEffect = "copy";
+                  if (dragOverCard !== "right") setDragOverCard("right");
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (dragOverCard === "right") setDragOverCard(null);
+                }}
                 onDrop={(e) => handleFileDropOnCard(e, "right")}
                 onClick={!fileB ? () => fileBInputRef.current?.click() : undefined}
-                className={`flex flex-col rounded-xl transition-all ${
+                className={
                   fileB
-                    ? "border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden"
-                    : "border-2 border-dashed border-slate-300 dark:border-slate-700/80 hover:border-teal-400 dark:hover:border-teal-500 cursor-pointer bg-slate-50/60 dark:bg-slate-900/60 hover:bg-slate-100/60 dark:hover:bg-slate-800/60 p-4 items-center justify-center text-center group shadow-xs"
-                }`}
+                    ? `flex flex-col rounded-xl border shadow-xs overflow-hidden transition-colors duration-150 ${
+                        dragOverCard === "right"
+                          ? "border-teal-500 bg-teal-50/40 dark:bg-teal-950/40 ring-2 ring-teal-500/30"
+                          : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"
+                      }`
+                    : `flex flex-col rounded-xl border-2 border-dashed p-4 items-center justify-center text-center cursor-pointer min-h-[92px] shadow-xs transition-colors duration-150 group ${
+                        dragOverCard === "right"
+                          ? "border-teal-500 bg-teal-50/90 dark:bg-teal-950/70 ring-2 ring-teal-500/30"
+                          : "border-slate-300 dark:border-slate-700/80 bg-slate-50/60 dark:bg-slate-900/60 hover:bg-slate-100/60 dark:hover:bg-slate-800/60 hover:border-teal-400 dark:hover:border-teal-500"
+                      }`
+                }
               >
                 {fileB ? (
                   <div className="p-3 flex items-center justify-between">

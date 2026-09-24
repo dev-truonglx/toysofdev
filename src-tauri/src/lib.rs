@@ -12,6 +12,7 @@ pub fn run() {
         .manage(log_grep::LogGrepState::default())
         .invoke_handler(tauri::generate_handler![
             diff::compute_text_diff,
+            diff::read_file_for_diff,
             log_grep::grep_log_file,
             log_grep::grep_log_content,
             log_grep::pick_log_file,
