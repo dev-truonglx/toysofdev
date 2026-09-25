@@ -180,6 +180,23 @@ function alignHunk(
   if (N === 0) return inserts.map(i => ({ newIdx: i }));
   if (M === 0) return deletes.map(d => ({ oldIdx: d }));
 
+  // Optimization: For very large hunks, skip the O(N*M) similarity DP
+  // and do a greedy 1:1 matching to prevent UI freezing.
+  if (N * M > 10000) {
+    const pairs: { oldIdx?: number; newIdx?: number }[] = [];
+    const maxLen = Math.max(N, M);
+    for (let k = 0; k < maxLen; k++) {
+      if (k < N && k < M) {
+        pairs.push({ oldIdx: deletes[k], newIdx: inserts[k] });
+      } else if (k < N) {
+        pairs.push({ oldIdx: deletes[k] });
+      } else {
+        pairs.push({ newIdx: inserts[k] });
+      }
+    }
+    return pairs;
+  }
+
   const THRESHOLD = 0.35;
 
   const dp: number[][] = Array(N + 1).fill(0).map(() => Array(M + 1).fill(0));

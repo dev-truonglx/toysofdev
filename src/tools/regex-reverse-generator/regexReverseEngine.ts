@@ -117,8 +117,8 @@ export const REGEX_PRESETS: RegexPreset[] = [
   },
 ];
 
-// Helper: Pick random element
-function pick<T>(arr: T[]): T {
+// Helper: Pick random element (supports arrays and strings)
+function pick<T>(arr: T[] | string): any {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
@@ -134,24 +134,24 @@ function sampleCharFromClass(charset: string): string {
   if (charset === "\\d" || charset === "[0-9]") return randInt(0, 9).toString();
   if (charset === "\\w") {
     const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_";
-    return pick(chars.split(""));
+    return pick(chars);
   }
   if (charset === "\\s") return " ";
   if (charset === "[a-z]") {
     const chars = "abcdefghijklmnopqrstuvwxyz";
-    return pick(chars.split(""));
+    return pick(chars);
   }
   if (charset === "[A-Z]") {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    return pick(chars.split(""));
+    return pick(chars);
   }
   if (charset === "[a-zA-Z]") {
     const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    return pick(chars.split(""));
+    return pick(chars);
   }
   if (charset === "[a-zA-Z0-9]") {
     const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    return pick(chars.split(""));
+    return pick(chars);
   }
   return "a";
 }
@@ -176,14 +176,14 @@ export function generateMatchingString(rawPattern: string, _flags: string = ""):
     const digits = "0123456789";
 
     const base = [
-      pick(uppers.split("")),
-      pick(lowers.split("")),
-      pick(digits.split("")),
-      pick(specials.split("")),
+      pick(uppers),
+      pick(lowers),
+      pick(digits),
+      pick(specials),
     ];
 
     while (base.length < 12) {
-      base.push(pick((uppers + lowers + digits + specials).split("")));
+      base.push(pick(uppers + lowers + digits + specials));
     }
 
     // Shuffle
@@ -288,7 +288,7 @@ export function generateMatchingString(rawPattern: string, _flags: string = ""):
           } else if (classContent.includes("a-z") && classContent.includes("A-Z")) {
             result += sampleCharFromClass("[a-zA-Z]");
           } else if (classContent.includes("a-z") && classContent.includes("0-9")) {
-            result += pick("abcdefghijklmnopqrstuvwxyz0123456789".split(""));
+            result += pick("abcdefghijklmnopqrstuvwxyz0123456789");
           } else if (classContent.includes("a-z")) {
             result += sampleCharFromClass("[a-z]");
           } else if (classContent.includes("A-Z")) {
@@ -298,7 +298,7 @@ export function generateMatchingString(rawPattern: string, _flags: string = ""):
           } else {
             // Strip brackets
             const chars = classContent.replace(/[[\]]/g, "");
-            result += pick(chars.split(""));
+            result += pick(chars);
           }
         }
         continue;

@@ -316,20 +316,26 @@ function randInt(min: number, max: number): number {
 }
 
 // Helper: random choice
-function pick<T>(arr: T[]): T {
+function pick<T>(arr: T[] | string): any {
   return arr[Math.floor(Math.random() * arr.length)];
 }
+
+const vnSimpleNamesCache = new Map<string, string>();
 
 /**
  * Remove Vietnamese accents for email/usernames
  */
 export function removeVietnameseTones(str: string): string {
-  return str
+  let cached = vnSimpleNamesCache.get(str);
+  if (cached) return cached;
+  const result = str
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/đ/g, "d")
     .replace(/Đ/g, "D")
     .toLowerCase();
+  vnSimpleNamesCache.set(str, result);
+  return result;
 }
 
 /**
@@ -666,8 +672,8 @@ export function generateMockDataset(options: FakeDataOptions): MockRecord[] {
         const pat = field.textPattern || "ORD-####-??";
         record[key] = pat.replace(/[#?*]/g, (char) => {
           if (char === "#") return randInt(0, 9).toString();
-          if (char === "?") return pick("ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""));
-          return pick("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""));
+          if (char === "?") return pick("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+          return pick("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ");
         });
       } else if (field.dataType === "boolean") {
         const boolVal = Math.random() > 0.5;
