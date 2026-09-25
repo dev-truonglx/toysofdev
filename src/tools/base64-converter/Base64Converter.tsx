@@ -112,7 +112,7 @@ export const Base64Converter: React.FC = () => {
         "Encode and decode text data to and from Base64 format with full UTF-8 support"
       }
       icon={Binary}
-      categoryName={t.categories["encoders-decoders"]?.title || "Encoders / Decoders"}
+      categoryName="encoders-decoders"
       configuration={config}
       inputLabel={mode === "encode" ? t.toolLayout?.input || "Raw Text" : "Base64"}
       inputValue={input}

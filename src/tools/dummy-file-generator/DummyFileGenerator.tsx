@@ -12,6 +12,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { useTranslation } from "../../i18n";
+import { ToolLayout } from "../../components/common/ToolLayout";
 import {
   DummyFileFormat,
   DummyFillPattern,
@@ -191,28 +192,19 @@ export const DummyFileGenerator: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 overflow-y-auto p-4 sm:p-6">
-      {/* Header */}
-      <div className="mb-6">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-xl border border-indigo-500/20 shrink-0">
-            <FileArchive className="w-6 h-6" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-              {t.dummyFile.title}
-              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
-                {t.dummyFile.qaBadge}
-              </span>
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-              {t.dummyFile.description}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+    <ToolLayout
+      id="dummy-file-generator"
+      title={t.dummyFile.title}
+      description={t.dummyFile.description}
+      icon={FileArchive}
+      categoryName="generators"
+      titleBadge={
+        <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+          {t.dummyFile.qaBadge}
+        </span>
+      }
+      customPanes={
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column: Config Controls */}
         <div className="lg:col-span-7 flex flex-col gap-5">
           {/* Main Config Card */}
@@ -532,6 +524,7 @@ export const DummyFileGenerator: React.FC = () => {
           </div>
         </div>
       </div>
-    </div>
-  );
+    }
+  />
+);
 };

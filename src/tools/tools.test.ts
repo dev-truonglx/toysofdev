@@ -31,14 +31,33 @@ import {
   SECURITY_PAYLOADS,
   getSecurityPayloads,
 } from "./boundary-tester/boundaryEngine";
+import {
+  generatePairwiseTestCases,
+  calculateCartesianProduct,
+  PAIRWISE_PRESETS,
+} from "./pairwise-tester/pairwiseEngine";
+import {
+  isValidLuhn,
+  generateValidCreditCard,
+  generateVietnamCccd,
+  generateVietnamTaxCode,
+  generateJapaneseMyNumber,
+  isValidJapaneseMyNumber,
+  generateMockDataset,
+} from "./fake-data-generator/fakeDataEngine";
+import {
+  generateMatchingString,
+  generateRegexTestSuite,
+  REGEX_PRESETS,
+} from "./regex-reverse-generator/regexReverseEngine";
 
 describe("Tool Logic Tests", () => {
-  it("verifies that all 37 DevToys tools are registered", () => {
-    expect(TOOLS.length).toBe(37);
+  it("verifies that all 40 DevToys tools are registered", () => {
+    expect(TOOLS.length).toBe(40);
     expect(CATEGORIES.length).toBe(6);
 
     const ids = new Set(TOOLS.map((t) => t.id));
-    expect(ids.size).toBe(37); // All IDs must be unique
+    expect(ids.size).toBe(40); // All IDs must be unique
     expect(ids.has("file-folder-diff")).toBe(true);
     expect(ids.has("log-grep")).toBe(true);
     expect(ids.has("json-to-code")).toBe(true);
@@ -46,6 +65,9 @@ describe("Tool Logic Tests", () => {
     expect(ids.has("chmod-calculator")).toBe(true);
     expect(ids.has("dummy-file-generator")).toBe(true);
     expect(ids.has("boundary-tester")).toBe(true);
+    expect(ids.has("pairwise-tester")).toBe(true);
+    expect(ids.has("fake-data-generator")).toBe(true);
+    expect(ids.has("regex-reverse-generator")).toBe(true);
   });
 
   describe("MD5 Generator", () => {
@@ -908,6 +930,84 @@ describe("Tool Logic Tests", () => {
       const viPayloads = getSecurityPayloads("vi");
       expect(viPayloads.some((p) => p.name === "Thẻ Script Cổ Điển")).toBe(true);
       expect(viPayloads.some((p) => p.name.includes("Vượt Xác Thực Cổ Điển"))).toBe(true);
+    });
+  });
+
+  describe("Pairwise Test Case Generator Logic", () => {
+    it("reduces high-dimensional matrix while preserving 100% 2-way pair coverage", () => {
+      const preset = PAIRWISE_PRESETS[0];
+      const fullCount = calculateCartesianProduct(preset.parameters);
+      expect(fullCount).toBe(960);
+
+      const result = generatePairwiseTestCases(preset.parameters);
+      expect(result.coveredPairs).toBe(result.totalPairs);
+      expect(result.testCases.length).toBeLessThan(40);
+      expect(result.reductionPercentage).toBeGreaterThan(90);
+    });
+  });
+
+  describe("Realistic Fake Data Generator Logic", () => {
+    it("generates valid credit cards conforming to Luhn algorithm", () => {
+      const card = generateValidCreditCard("Visa");
+      const clean = card.number.replace(/\s+/g, "");
+      expect(isValidLuhn(clean)).toBe(true);
+    });
+
+    it("generates authentic 12-digit Vietnam CCCD and valid Tax Code", () => {
+      const cccd = generateVietnamCccd(1996, false);
+      expect(cccd.length).toBe(12);
+      expect(cccd.substring(4, 6)).toBe("96");
+
+      const taxCode = generateVietnamTaxCode();
+      expect(taxCode.length).toBe(10);
+    });
+
+    it("generates authentic 12-digit Japanese My Number and Japan test dataset", () => {
+      const myNum = generateJapaneseMyNumber();
+      expect(myNum.length).toBe(12);
+      expect(isValidJapaneseMyNumber(myNum)).toBe(true);
+
+      const jpData = generateMockDataset({
+        count: 3,
+        locale: "ja",
+        minAge: 20,
+        maxAge: 40,
+        gender: "all",
+        fields: { fullName: true, phone: true, citizenId: true, address: true },
+      });
+      expect(jpData.length).toBe(3);
+      expect(jpData[0].phone).toMatch(/^0[789]0-/);
+      expect(jpData[0].address).toContain("〒");
+    });
+
+    it("generates valid realistic user dataset", () => {
+      const data = generateMockDataset({
+        count: 5,
+        locale: "vi",
+        minAge: 18,
+        maxAge: 50,
+        gender: "all",
+        fields: { fullName: true, phone: true, email: true },
+      });
+      expect(data.length).toBe(5);
+      expect(data[0].fullName).toBeDefined();
+    });
+  });
+
+  describe("Regex Reverse Generator Logic", () => {
+    it("generates strings matching email regex", () => {
+      const emailPreset = REGEX_PRESETS[0];
+      const match = generateMatchingString(emailPreset.pattern, emailPreset.flags);
+      const reg = new RegExp(emailPreset.pattern, emailPreset.flags);
+      expect(reg.test(match)).toBe(true);
+    });
+
+    it("generates test suite with both PASS and FAIL cases for QA testing", () => {
+      const phonePreset = REGEX_PRESETS[1];
+      const suite = generateRegexTestSuite(phonePreset.pattern, phonePreset.flags, 3, false);
+      expect(suite.isValidRegex).toBe(true);
+      expect(suite.testCases.some((c) => c.expected === "PASS")).toBe(true);
+      expect(suite.testCases.some((c) => c.expected === "FAIL")).toBe(true);
     });
   });
 });

@@ -11,6 +11,7 @@ import {
   Filter,
 } from "lucide-react";
 import { useTranslation } from "../../i18n";
+import { ToolLayout } from "../../components/common/ToolLayout";
 import {
   BoundaryType,
   StringConfig,
@@ -120,56 +121,45 @@ export const BoundaryTester: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 overflow-y-auto p-4 sm:p-6">
-      {/* Header */}
-      <div className="mb-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-xl border border-emerald-500/20">
-              <CheckCheck className="w-6 h-6" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                {t.boundaryTester.title}
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                  {t.boundaryTester.qaBadge}
-                </span>
-              </h1>
-              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-                {t.boundaryTester.description}
-              </p>
-            </div>
-          </div>
-
-          {/* Mode Switch Tabs */}
-          <div className="flex bg-slate-200/80 dark:bg-slate-800 p-1 rounded-xl border border-slate-300/60 dark:border-slate-700/80 text-xs font-semibold self-start sm:self-auto">
-            <button
-              onClick={() => setActiveTab("bva")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                activeTab === "bva"
-                  ? "bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm"
-                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
-              }`}
-            >
-              <Sliders className="w-3.5 h-3.5" />
-              <span>{t.boundaryTester.bvaTab}</span>
-            </button>
-            <button
-              onClick={() => setActiveTab("security")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                activeTab === "security"
-                  ? "bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 shadow-sm"
-                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
-              }`}
-            >
-              <ShieldAlert className="w-3.5 h-3.5" />
-              <span>{t.boundaryTester.securityTab}</span>
-            </button>
-          </div>
+    <ToolLayout
+      id="boundary-tester"
+      title={t.boundaryTester.title}
+      description={t.boundaryTester.description}
+      icon={CheckCheck}
+      categoryName="graphic"
+      titleBadge={
+        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+          {t.boundaryTester.qaBadge}
+        </span>
+      }
+      actionsRight={
+        <div className="flex bg-slate-200/80 dark:bg-slate-800 p-1 rounded-xl border border-slate-300/60 dark:border-slate-700/80 text-xs font-semibold">
+          <button
+            onClick={() => setActiveTab("bva")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+              activeTab === "bva"
+                ? "bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm"
+                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+            }`}
+          >
+            <Sliders className="w-3.5 h-3.5" />
+            <span>{t.boundaryTester.bvaTab}</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("security")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+              activeTab === "security"
+                ? "bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 shadow-sm"
+                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+            }`}
+          >
+            <ShieldAlert className="w-3.5 h-3.5" />
+            <span>{t.boundaryTester.securityTab}</span>
+          </button>
         </div>
-      </div>
-
-      {activeTab === "bva" ? (
+      }
+      customPanes={
+        activeTab === "bva" ? (
         <div className="space-y-6">
           {/* Configuration Card */}
           <div className="bg-white dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700/80 p-5 shadow-sm">
@@ -544,6 +534,6 @@ export const BoundaryTester: React.FC = () => {
           </div>
         </div>
       )}
-    </div>
+    />
   );
 };

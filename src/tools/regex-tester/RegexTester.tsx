@@ -187,7 +187,7 @@ export const RegexTester: React.FC = () => {
         "Test, debug and validate regular expressions against text in real-time"
       }
       icon={Regex}
-      categoryName={t.categories["graphic"]?.title || "Graphic & Testing"}
+      categoryName="graphic"
       configuration={config}
       error={error}
       customPanes={

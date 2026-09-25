@@ -485,7 +485,7 @@ export const TextDiffComparer: React.FC = () => {
       title={t.tools["text-diff-comparer"]?.title || "Text Diff / Comparer"}
       description={t.tools["text-diff-comparer"]?.description || "Compare two blocks of text"}
       icon={GitCompare}
-      categoryName={t.categories["text"]?.title || "Text Utilities"}
+      categoryName="text"
       configuration={config}
       customPanes={
         <div className="flex flex-col flex-1 gap-4 overflow-hidden">

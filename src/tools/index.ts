@@ -29,6 +29,9 @@ import {
   SearchCode,
   FolderSync,
   Lock,
+  Layers,
+  Users,
+  Wand2,
 } from "lucide-react";
 import { CategoryDefinition, ToolDefinition } from "./types";
 import { Language, getTranslation } from "../i18n";
@@ -80,6 +83,11 @@ import { CurlConverter } from "./curl-converter/CurlConverter";
 import { ChmodCalculator } from "./chmod-calculator/ChmodCalculator";
 import { DummyFileGenerator } from "./dummy-file-generator/DummyFileGenerator";
 import { BoundaryTester } from "./boundary-tester/BoundaryTester";
+
+// New QA & Dev Daily Tools
+import { PairwiseTester } from "./pairwise-tester/PairwiseTester";
+import { FakeDataGenerator } from "./fake-data-generator/FakeDataGenerator";
+import { RegexReverseGenerator } from "./regex-reverse-generator/RegexReverseGenerator";
 
 export const CATEGORIES: CategoryDefinition[] = [
   {
@@ -379,6 +387,32 @@ export const TOOLS: ToolDefinition[] = [
     ],
     component: DummyFileGenerator,
   },
+  {
+    id: "fake-data-generator",
+    title: "Realistic Mock & Fake Data Generator",
+    description: "Generate authentic test profiles with valid Luhn credit cards, Vietnam CCCD, Tax IDs, local phone numbers, emails, addresses, and bank accounts",
+    category: "generators",
+    icon: Users,
+    keywords: [
+      "fake",
+      "mock",
+      "data",
+      "faker",
+      "generator",
+      "cccd",
+      "tax",
+      "credit card",
+      "luhn",
+      "phone",
+      "email",
+      "vietnam",
+      "profile",
+      "user",
+      "tester",
+      "dữ liệu giả",
+    ],
+    component: FakeDataGenerator,
+  },
 
   // 5. Text Utilities (5)
   {
@@ -514,6 +548,48 @@ export const TOOLS: ToolDefinition[] = [
       "biên",
     ],
     component: BoundaryTester,
+  },
+  {
+    id: "pairwise-tester",
+    title: "Pairwise / All-Pairs Test Case Generator",
+    description: "Generate an optimal combinatorial test suite covering 100% of 2-way interactions with the minimal number of test cases",
+    category: "graphic",
+    icon: Layers,
+    keywords: [
+      "pairwise",
+      "allpairs",
+      "orthogonal",
+      "testcase",
+      "combinatorial",
+      "matrix",
+      "tester",
+      "qa",
+      "istqb",
+      "tổ hợp",
+      "kiểm thử",
+    ],
+    component: PairwiseTester,
+  },
+  {
+    id: "regex-reverse-generator",
+    title: "Regex Reverse Test String Generator",
+    description: "Reverse-engineer regular expressions to generate both matching happy path strings and negative boundary test cases",
+    category: "graphic",
+    icon: Wand2,
+    keywords: [
+      "regex",
+      "reverse",
+      "generator",
+      "fuzzer",
+      "negative",
+      "boundary",
+      "testcase",
+      "tester",
+      "qa",
+      "dịch ngược regex",
+      "chuỗi kiểm thử",
+    ],
+    component: RegexReverseGenerator,
   },
 ];
 

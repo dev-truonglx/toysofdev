@@ -24,6 +24,7 @@ interface ToolLayoutProps {
   error?: string | null;
   customPanes?: React.ReactNode;
   actionsRight?: React.ReactNode;
+  titleBadge?: React.ReactNode;
   hideInput?: boolean;
   onFormatInput?: () => boolean | void;
 }
@@ -49,6 +50,7 @@ export const ToolLayout: React.FC<ToolLayoutProps> = ({
   error,
   customPanes,
   actionsRight,
+  titleBadge,
   hideInput,
   onFormatInput,
 }) => {
@@ -57,7 +59,49 @@ export const ToolLayout: React.FC<ToolLayoutProps> = ({
 
   const finalTitle = t.tools[id]?.title || title;
   const finalDescription = t.tools[id]?.description || description;
-  const finalCategoryName = t.categories[categoryName.toLowerCase()]?.title || categoryName;
+
+  const getCategoryTitle = (): string => {
+    const rawLower = (categoryName || "").toLowerCase().trim();
+    // 1. Direct key match (e.g. "converters", "encoders-decoders", "formatters", "generators", "text", "graphic")
+    if (t.categories[rawLower]?.title) {
+      return t.categories[rawLower].title;
+    }
+
+    // 2. Normalized mapping for legacy/display strings passed by tools
+    const CATEGORY_MAP: Record<string, keyof typeof t.categories> = {
+      "text utilities": "text",
+      "text": "text",
+      "graphic & testing": "graphic",
+      "graphic and testing": "graphic",
+      "graphic": "graphic",
+      "encoders / decoders": "encoders-decoders",
+      "encoders-decoders": "encoders-decoders",
+      "encoders/decoders": "encoders-decoders",
+      "converters": "converters",
+      "converter": "converters",
+      "formatters": "formatters",
+      "formatter": "formatters",
+      "generators": "generators",
+      "generator": "generators",
+    };
+
+    const mappedKey = CATEGORY_MAP[rawLower];
+    if (mappedKey && t.categories[mappedKey]?.title) {
+      return t.categories[mappedKey].title;
+    }
+
+    // 3. Reverse lookup if categoryName was passed as an already localized title
+    for (const catKey of Object.keys(t.categories) as (keyof typeof t.categories)[]) {
+      const catObj = t.categories[catKey];
+      if (catObj && catObj.title.toLowerCase() === rawLower) {
+        return catObj.title;
+      }
+    }
+
+    return categoryName;
+  };
+
+  const finalCategoryName = getCategoryTitle();
   const finalInputLabel = inputLabel || t.toolLayout.input;
   const finalOutputLabel = outputLabel || t.toolLayout.output;
   const finalInputPlaceholder = inputPlaceholder || t.toolLayout.inputPlaceholder;
@@ -176,8 +220,9 @@ export const ToolLayout: React.FC<ToolLayoutProps> = ({
               <Icon className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-                {finalTitle}
+              <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100 flex flex-wrap items-center gap-2">
+                <span>{finalTitle}</span>
+                {titleBadge}
               </h1>
               <p className="text-sm text-slate-500 dark:text-slate-400">{finalDescription}</p>
             </div>

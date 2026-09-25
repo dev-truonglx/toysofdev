@@ -1130,7 +1130,7 @@ export const FileFolderDiffComparer: React.FC = () => {
       title={t.tools["file-folder-diff"]?.title || "File & Folder Diff"}
       description={t.tools["file-folder-diff"]?.description || "Compare contents between two files"}
       icon={FolderSync}
-      categoryName={t.categories["text"]?.title || "Text Utilities"}
+      categoryName="text"
       configuration={configurationToolbar}
       customPanes={
         <div

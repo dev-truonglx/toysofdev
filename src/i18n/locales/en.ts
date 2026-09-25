@@ -227,6 +227,18 @@ export const en: TranslationSchema = {
       title: "Boundary & Test Case Suggester",
       description: "Generate Boundary Value Analysis (BVA), Equivalence Partitioning, and Security Fuzzing payloads for test design",
     },
+    "fake-data-generator": {
+      title: "Realistic Mock & Fake Data Generator",
+      description: "Generate authentic test profiles with valid Luhn credit cards, Vietnam CCCD, Tax IDs, local phone numbers, emails, addresses, and bank accounts",
+    },
+    "pairwise-tester": {
+      title: "Pairwise / All-Pairs Test Case Generator",
+      description: "Generate an optimal combinatorial test suite covering 100% of 2-way interactions with the minimal number of test cases",
+    },
+    "regex-reverse-generator": {
+      title: "Regex Reverse Test String Generator",
+      description: "Reverse-engineer regular expressions to generate both matching happy path strings and negative boundary test cases",
+    },
   },
   toolLayout: {
     input: "Input",

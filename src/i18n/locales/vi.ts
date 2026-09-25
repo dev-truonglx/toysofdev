@@ -227,6 +227,18 @@ export const vi: TranslationSchema = {
       title: "Gợi Ý Giá Trị Biên & Payload Kiểm Thử",
       description: "Tự động phân tích giá trị biên (BVA), phân vùng tương đương và gợi ý bộ payload kiểm thử bảo mật XSS, SQLi, Fuzzing",
     },
+    "fake-data-generator": {
+      title: "Bộ Sinh Dữ Liệu Giả Lập Thực Tế (Mock Data / Faker)",
+      description: "Sinh dữ liệu thử nghiệm chuẩn thực tế: CCCD 12 số, Mã số thuế, Thẻ tín dụng test (Luhn), Số điện thoại VN, Email, Địa chỉ, Tài khoản ngân hàng",
+    },
+    "pairwise-tester": {
+      title: "Bộ Sinh Test Case Tổ Hợp Tối Ưu (Pairwise / All-Pairs)",
+      description: "Tối ưu hóa tổ hợp kiểm thử (All-Pairs Testing): Phủ 100% cặp tương tác 2 chiều với số lượng test case tối thiểu",
+    },
+    "regex-reverse-generator": {
+      title: "Bộ Sinh Chuỗi Kiểm Thử Regex (Regex Reverse & Fuzzer)",
+      description: "Tự động dịch ngược Regular Expression để sinh ra các chuỗi thỏa mãn (Happy Path) và các chuỗi vi phạm tinh vi (Negative/Boundary) cho Tester",
+    },
   },
   toolLayout: {
     input: "Đầu vào",
