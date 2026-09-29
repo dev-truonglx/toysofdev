@@ -1,6 +1,7 @@
 mod diff;
 mod log_grep;
 mod color_picker;
+mod local_cli;
 
 #[tauri::command]
 fn save_binary_file(path: String, data: Vec<u8>) -> Result<(), String> {
@@ -31,6 +32,8 @@ pub fn run() {
             color_picker::start_eyedropper,
             color_picker::cancel_eyedropper,
             save_binary_file,
+            local_cli::check_local_cli,
+            local_cli::execute_local_cli,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -32,11 +32,6 @@ import {
   getSecurityPayloads,
 } from "./boundary-tester/boundaryEngine";
 import {
-  generatePairwiseTestCases,
-  calculateCartesianProduct,
-  PAIRWISE_PRESETS,
-} from "./pairwise-tester/pairwiseEngine";
-import {
   isValidLuhn,
   generateValidCreditCard,
   generateVietnamCccd,
@@ -63,9 +58,9 @@ describe("Tool Logic Tests", () => {
     expect(ids.has("json-to-code")).toBe(true);
     expect(ids.has("curl-converter")).toBe(true);
     expect(ids.has("chmod-calculator")).toBe(true);
+    expect(ids.has("ai-testcase-generator")).toBe(true);
     expect(ids.has("dummy-file-generator")).toBe(true);
     expect(ids.has("boundary-tester")).toBe(true);
-    expect(ids.has("pairwise-tester")).toBe(true);
     expect(ids.has("fake-data-generator")).toBe(true);
     expect(ids.has("regex-reverse-generator")).toBe(true);
   });
@@ -930,19 +925,6 @@ describe("Tool Logic Tests", () => {
       const viPayloads = getSecurityPayloads("vi");
       expect(viPayloads.some((p) => p.name === "Thẻ Script Cổ Điển")).toBe(true);
       expect(viPayloads.some((p) => p.name.includes("Vượt Xác Thực Cổ Điển"))).toBe(true);
-    });
-  });
-
-  describe("Pairwise Test Case Generator Logic", () => {
-    it("reduces high-dimensional matrix while preserving 100% 2-way pair coverage", () => {
-      const preset = PAIRWISE_PRESETS[0];
-      const fullCount = calculateCartesianProduct(preset.parameters);
-      expect(fullCount).toBe(960);
-
-      const result = generatePairwiseTestCases(preset.parameters);
-      expect(result.coveredPairs).toBe(result.totalPairs);
-      expect(result.testCases.length).toBeLessThan(40);
-      expect(result.reductionPercentage).toBeGreaterThan(90);
     });
   });
 

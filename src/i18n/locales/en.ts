@@ -231,13 +231,13 @@ export const en: TranslationSchema = {
       title: "Realistic Mock & Fake Data Generator",
       description: "Generate authentic test profiles with valid Luhn credit cards, Vietnam CCCD, Tax IDs, local phone numbers, emails, addresses, and bank accounts",
     },
-    "pairwise-tester": {
-      title: "Pairwise / All-Pairs Test Case Generator",
-      description: "Generate an optimal combinatorial test suite covering 100% of 2-way interactions with the minimal number of test cases",
-    },
     "regex-reverse-generator": {
       title: "Regex Reverse Test String Generator",
       description: "Reverse-engineer regular expressions to generate both matching happy path strings and negative boundary test cases",
+    },
+    "ai-testcase-generator": {
+      title: "AI Test Case Generator Agent",
+      description: "Autonomous multi-tier test case engineering from BRD/PRD specifications with dedicated QA agents (ISTQB compliant)",
     },
   },
   toolLayout: {

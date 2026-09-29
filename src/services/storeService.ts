@@ -4,6 +4,27 @@ const STORE_FILENAME = "config.json";
 const BOOKMARKS_KEY = "bookmarks";
 const LANGUAGE_KEY = "language";
 const SIDEBAR_COLLAPSED_KEY = "sidebar_collapsed";
+const AI_CONFIG_KEY = "ai_config";
+
+export interface AIConfig {
+  provider: "gemini" | "claude" | "local-cli";
+  geminiApiKey: string;
+  geminiModel: string;
+  claudeApiKey: string;
+  claudeModel: string;
+  localCliPath?: string;
+  localCliModel?: string;
+}
+
+export const DEFAULT_AI_CONFIG: AIConfig = {
+  provider: "local-cli",
+  geminiApiKey: "",
+  geminiModel: "gemini-3.8-flash",
+  claudeApiKey: "",
+  claudeModel: "claude-sonnet-5-5",
+  localCliPath: "",
+  localCliModel: "gemini-3.8-flash-high",
+};
 
 let tauriStore: Store | null = null;
 
@@ -29,6 +50,7 @@ async function getStore(): Promise<Store | null> {
 let memoryBookmarks: string[] = [];
 let memoryLanguage: "en" | "vi" = "en";
 let memorySidebarCollapsed = false;
+let memoryAIConfig: AIConfig = { ...DEFAULT_AI_CONFIG };
 
 export async function loadBookmarksFromDisk(): Promise<string[]> {
   try {
@@ -135,6 +157,50 @@ export async function saveSidebarCollapsedToDisk(collapsed: boolean): Promise<vo
     }
   } catch (err) {
     console.error("Error saving sidebar collapsed state to store:", err);
+  }
+}
+
+export async function loadAIConfigFromDisk(): Promise<AIConfig> {
+  try {
+    const store = await getStore();
+    if (store) {
+      const data = await store.get<AIConfig>(AI_CONFIG_KEY);
+      if (data && typeof data === "object") {
+        return {
+          ...DEFAULT_AI_CONFIG,
+          ...data,
+        };
+      }
+    } else if (typeof window !== "undefined" && window.localStorage) {
+      const data = localStorage.getItem(AI_CONFIG_KEY);
+      if (data) {
+        return {
+          ...DEFAULT_AI_CONFIG,
+          ...JSON.parse(data),
+        };
+      }
+    } else {
+      return memoryAIConfig;
+    }
+  } catch (err) {
+    console.error("Error reading AI config from store:", err);
+  }
+  return { ...DEFAULT_AI_CONFIG };
+}
+
+export async function saveAIConfigToDisk(config: AIConfig): Promise<void> {
+  try {
+    const store = await getStore();
+    if (store) {
+      await store.set(AI_CONFIG_KEY, config);
+      await store.save();
+    } else if (typeof window !== "undefined" && window.localStorage) {
+      localStorage.setItem(AI_CONFIG_KEY, JSON.stringify(config));
+    } else {
+      memoryAIConfig = { ...config };
+    }
+  } catch (err) {
+    console.error("Error saving AI config to store:", err);
   }
 }
 

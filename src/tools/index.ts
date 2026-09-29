@@ -29,9 +29,9 @@ import {
   SearchCode,
   FolderSync,
   Lock,
-  Layers,
   Users,
   Wand2,
+  Bot,
 } from "lucide-react";
 import { CategoryDefinition, ToolDefinition } from "./types";
 import { Language, getTranslation } from "../i18n";
@@ -85,9 +85,9 @@ import { DummyFileGenerator } from "./dummy-file-generator/DummyFileGenerator";
 import { BoundaryTester } from "./boundary-tester/BoundaryTester";
 
 // New QA & Dev Daily Tools
-import { PairwiseTester } from "./pairwise-tester/PairwiseTester";
 import { FakeDataGenerator } from "./fake-data-generator/FakeDataGenerator";
 import { RegexReverseGenerator } from "./regex-reverse-generator/RegexReverseGenerator";
+import { AiTestCaseGenerator } from "./ai-testcase-generator/AiTestCaseGenerator";
 
 export const CATEGORIES: CategoryDefinition[] = [
   {
@@ -550,27 +550,6 @@ export const TOOLS: ToolDefinition[] = [
     component: BoundaryTester,
   },
   {
-    id: "pairwise-tester",
-    title: "Pairwise / All-Pairs Test Case Generator",
-    description: "Generate an optimal combinatorial test suite covering 100% of 2-way interactions with the minimal number of test cases",
-    category: "graphic",
-    icon: Layers,
-    keywords: [
-      "pairwise",
-      "allpairs",
-      "orthogonal",
-      "testcase",
-      "combinatorial",
-      "matrix",
-      "tester",
-      "qa",
-      "istqb",
-      "tổ hợp",
-      "kiểm thử",
-    ],
-    component: PairwiseTester,
-  },
-  {
     id: "regex-reverse-generator",
     title: "Regex Reverse Test String Generator",
     description: "Reverse-engineer regular expressions to generate both matching happy path strings and negative boundary test cases",
@@ -590,6 +569,31 @@ export const TOOLS: ToolDefinition[] = [
       "chuỗi kiểm thử",
     ],
     component: RegexReverseGenerator,
+  },
+  {
+    id: "ai-testcase-generator",
+    title: "AI Test Case Generator Agent",
+    description: "Autonomous multi-tier test case engineering from BRD/PRD specifications with dedicated QA agents (ISTQB compliant)",
+    category: "graphic",
+    icon: Bot,
+    keywords: [
+      "ai",
+      "testcase",
+      "generator",
+      "qa",
+      "istqb",
+      "bva",
+      "rtm",
+      "agent",
+      "jira",
+      "xray",
+      "crewai",
+      "kiểm thử",
+      "tự động",
+      "sinh testcase",
+      "spec",
+    ],
+    component: AiTestCaseGenerator,
   },
 ];
 

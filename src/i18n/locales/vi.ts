@@ -231,13 +231,13 @@ export const vi: TranslationSchema = {
       title: "Bộ Sinh Dữ Liệu Giả Lập Thực Tế (Mock Data / Faker)",
       description: "Sinh dữ liệu thử nghiệm chuẩn thực tế: CCCD 12 số, Mã số thuế, Thẻ tín dụng test (Luhn), Số điện thoại VN, Email, Địa chỉ, Tài khoản ngân hàng",
     },
-    "pairwise-tester": {
-      title: "Bộ Sinh Test Case Tổ Hợp Tối Ưu (Pairwise / All-Pairs)",
-      description: "Tối ưu hóa tổ hợp kiểm thử (All-Pairs Testing): Phủ 100% cặp tương tác 2 chiều với số lượng test case tối thiểu",
-    },
     "regex-reverse-generator": {
       title: "Bộ Sinh Chuỗi Kiểm Thử Regex (Regex Reverse & Fuzzer)",
       description: "Tự động dịch ngược Regular Expression để sinh ra các chuỗi thỏa mãn (Happy Path) và các chuỗi vi phạm tinh vi (Negative/Boundary) cho Tester",
+    },
+    "ai-testcase-generator": {
+      title: "AI Test Case Generator Agent (Chuẩn ISTQB)",
+      description: "Tự động phân rã tài liệu BA Spec/PRD, sinh bộ test case toàn diện đa tầng với dàn Agent chuyên trách",
     },
   },
   toolLayout: {
