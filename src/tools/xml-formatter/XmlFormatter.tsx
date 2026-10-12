@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { FileCode } from "lucide-react";
 import { ToolLayout } from "../../components/common/ToolLayout";
+import { XmlFoldableViewer } from "../../components/common/XmlFoldableViewer";
 import { useTranslation } from "../../i18n";
 
 export type IndentMode = "2" | "4" | "tab" | "minified";
@@ -181,6 +182,17 @@ export const XmlFormatter: React.FC = () => {
     }
   }, [input, indent, attributeLayout, t]);
 
+  const handleFormatInput = () => {
+    if (!input.trim()) return false;
+    try {
+      const formatted = formatXml(input, indent, attributeLayout);
+      setInput(formatted);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const config = (
     <div className="flex flex-wrap items-center gap-4">
       <div className="flex items-center gap-2">
@@ -229,8 +241,11 @@ export const XmlFormatter: React.FC = () => {
       configuration={config}
       inputValue={input}
       onInputChange={setInput}
+      onFormatInput={handleFormatInput}
       inputPlaceholder="Paste raw XML here..."
       outputValue={output}
+      outputNode={<XmlFoldableViewer xmlString={output} />}
+      outputNodeNoPadding={true}
       error={error}
     />
   );

@@ -25,6 +25,7 @@ interface ToolLayoutProps {
   customPanes?: React.ReactNode;
   actionsRight?: React.ReactNode;
   titleBadge?: React.ReactNode;
+  outputNodeNoPadding?: boolean;
   hideInput?: boolean;
   onFormatInput?: () => boolean | void;
 }
@@ -51,6 +52,7 @@ export const ToolLayout: React.FC<ToolLayoutProps> = ({
   customPanes,
   actionsRight,
   titleBadge,
+  outputNodeNoPadding,
   hideInput,
   onFormatInput,
 }) => {
@@ -192,7 +194,11 @@ export const ToolLayout: React.FC<ToolLayoutProps> = ({
         </div>
       </div>
       {outputNode ? (
-        <div className="flex-1 w-full p-4 overflow-auto bg-slate-50/40 dark:bg-slate-950/40 font-mono text-xs leading-relaxed text-slate-800 dark:text-slate-200 whitespace-pre-wrap break-all select-text">
+        <div
+          className={`flex-1 w-full flex flex-col bg-slate-50/40 dark:bg-slate-950/40 font-mono text-xs leading-relaxed text-slate-800 dark:text-slate-200 select-text ${
+            outputNodeNoPadding ? "p-0 overflow-hidden" : "p-4 overflow-auto whitespace-pre-wrap break-all"
+          }`}
+        >
           {outputNode}
         </div>
       ) : (

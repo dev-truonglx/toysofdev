@@ -237,6 +237,25 @@ export interface TranslationSchema {
     originalTextPlaceholder: string;
     modifiedTextPlaceholder: string;
     startWithLorem: string;
+    treeView: string;
+    rawView: string;
+    expandAll: string;
+    collapseAll: string;
+    toggleLineNumbers: string;
+    searchKeyPlaceholder: string;
+    searchXmlPlaceholder: string;
+    matchesFound: string;
+    noMatches: string;
+    copyPath: string;
+    copyValue: string;
+    keysCount: string;
+    itemsCount: string;
+    nodesCount: string;
+    filterMatchesOnly: string;
+    showFullTree: string;
+    matchingResults: string;
+    searching: string;
+    showMoreResults: string;
   };
   diff: {
     original: string;

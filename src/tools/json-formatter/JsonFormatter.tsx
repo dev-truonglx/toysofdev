@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { FileCode, ArrowDownUp } from "lucide-react";
 import { ToolLayout } from "../../components/common/ToolLayout";
+import { JsonFoldableViewer } from "../../components/common/JsonFoldableViewer";
 import { useTranslation } from "../../i18n";
 
 type IndentMode = "2" | "4" | "tab" | "minified";
@@ -9,6 +10,7 @@ export const JsonFormatter: React.FC = () => {
   const { t } = useTranslation();
   const [input, setInput] = useState("");
   const [output, setOutput] = useState("");
+  const [parsedData, setParsedData] = useState<unknown>(undefined);
   const [indent, setIndent] = useState<IndentMode>("2");
   const [sortProperties, setSortProperties] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +33,7 @@ export const JsonFormatter: React.FC = () => {
   useEffect(() => {
     if (!input.trim()) {
       setOutput("");
+      setParsedData(undefined);
       setError(null);
       return;
     }
@@ -51,12 +54,34 @@ export const JsonFormatter: React.FC = () => {
       }
 
       setOutput(formatted);
+      setParsedData(parsed);
       setError(null);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : `${t.ui.invalid} JSON`);
       setOutput("");
+      setParsedData(undefined);
     }
   }, [input, indent, sortProperties, t]);
+
+  const handleFormatInput = () => {
+    if (!input.trim()) return false;
+    try {
+      let parsed = JSON.parse(input);
+      if (sortProperties) {
+        parsed = sortKeys(parsed);
+      }
+      const formatted =
+        indent === "minified"
+          ? JSON.stringify(parsed)
+          : indent === "tab"
+          ? JSON.stringify(parsed, null, "\t")
+          : JSON.stringify(parsed, null, parseInt(indent, 10));
+      setInput(formatted);
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
   const config = (
     <>
@@ -101,9 +126,13 @@ export const JsonFormatter: React.FC = () => {
       configuration={config}
       inputValue={input}
       onInputChange={setInput}
+      onFormatInput={handleFormatInput}
       inputPlaceholder="Paste raw JSON here..."
       outputValue={output}
+      outputNode={<JsonFoldableViewer data={parsedData} rawText={output} />}
+      outputNodeNoPadding={true}
       error={error}
     />
   );
 };
+
